@@ -4,22 +4,34 @@ namespace Schalkt\RedisFullPageCache;
 
 
 /**
- * Redis full page cache
+ * Class FPCache
+ *
+ * @package Schalkt\RedisFullPageCache
  */
 class FPCache
 {
 
 	/**
+	 * Config
+	 *
 	 * @var null
 	 */
 	protected static $config = array(
 
-		'prefix'        => 'brite',
 		'debug'         => true,
-		'expire'        => 3600,
+		'prefix'        => 'fpc', // change this to unique
+		'expire'        => 3600, // cache expire time
 		'redis'         => array(
-			'host' => '127.0.0.1',
-			'port' => 6379,
+			'host'     => '127.0.0.1',
+			'port'     => 6379,
+			'password' => null,
+			'database' => 0,
+			'timeout'  => 5,
+		),
+		'commands'      => array(
+			'key'  => 'rfpc',  // change this to custom
+			'skip' => 'preview', // skip cache : http://domain.com/?rfpc=preview
+			'save' => 'regenerate' // save cache : http://domain.com/?rfpc=regenerate
 		),
 		'enable_http'   => array(
 			'method' => array(
@@ -30,9 +42,9 @@ class FPCache
 			),
 		),
 		'skip_patterns' => array(
-			'/\/api\/.*/',
-			'/\/admin\/.*/',
-			'/\.(jpg|png|gif|css|js|ico|txt)/',
+			'/\/api\/.*/',  // skip api url by regexp pattern
+			'/\/admin\/.*/',  // skip admin url by regexp pattern
+			'/\.(jpg|png|gif|css|js|ico|txt)/',  // skip files by regexp pattern
 		),
 
 	);
@@ -73,15 +85,17 @@ class FPCache
 			return self::checkFalse();
 		}
 
-		if (!empty($_GET['rfpc'])) {
+		if (!empty($_GET[self::$config['commands']['key']])) {
+
+			$qp = $_GET[self::$config['commands']['key']];
 
 			// skip load and save
-			if ($_GET['rfpc'] == 'skip') {
+			if ($qp == self::$config['commands']['skip']) {
 				return self::checkFalse();
 			}
 
 			// skip only load
-			if ($action == 'load' && $_GET['rfpc'] == 'save') {
+			if ($action == 'load' && $qp == self::$config['commands']['save']) {
 				return self::checkFalse();
 			}
 
@@ -102,7 +116,7 @@ class FPCache
 
 
 	/**
-	 * Get clean URL
+	 * Get cleaned URL
 	 *
 	 * @return string
 	 */
@@ -128,6 +142,19 @@ class FPCache
 
 
 	/**
+	 * Generate key
+	 *
+	 * @param null $url
+	 *
+	 * @return string
+	 */
+	protected static function getKey($url = null)
+	{
+		return self::$config['prefix'] . ':' . hash('sha1', empty($url) ? self::getUrl() : $url);
+	}
+
+
+	/**
 	 * Load cache
 	 *
 	 * @return bool
@@ -140,16 +167,13 @@ class FPCache
 		}
 
 		RedisLight::config(self::$config['redis']);
-		$key = self::$config['prefix'] . ':' . md5(self::getUrl());
-
-		$html = RedisLight::executeCommand('GET', array($key));
+		$html = RedisLight::executeCommand('GET', array(self::getKey()));
 
 		if (empty($html)) {
 			return false;
 		}
 
-
-		// get additional info
+		// get additional info (headers and http status)
 		$pos = strpos($html, '|||');
 		$json = substr($html, 0, $pos);
 		$html = substr($html, $pos + 3);
@@ -163,7 +187,7 @@ class FPCache
 		// clean ob and echo the cached full page
 		if (ob_get_length()) ob_end_clean();
 
-		if (!empty(self::$config['redis']) && defined('APP_START')) {
+		if (!empty(self::$config['debug']) && defined('APP_START')) {
 			$time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
 			$html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
 		}
@@ -172,6 +196,13 @@ class FPCache
 
 	}
 
+	/**
+	 * @param      $value
+	 * @param int  $status
+	 * @param null $expire
+	 *
+	 * @return bool
+	 */
 	public static function save($value, $status = 200, $expire = null)
 	{
 
@@ -187,17 +218,29 @@ class FPCache
 			$expire = self::$config['expire'];
 		}
 
-		$key = self::$config['prefix'] . ':' . md5(self::getUrl());
 		$data = array(
 			'headers' => headers_list(),
 			'status'  => $status,
 		);
 
 		RedisLight::config(self::$config['redis']);
-		RedisLight::executeCommand('SETEX', array($key, $expire, json_encode($data) . '|||' . $value));
+		RedisLight::executeCommand('SETEX', array(self::getKey(), $expire, json_encode($data) . '|||' . $value));
+
+	}
+
+	public static function delete($url = null)
+	{
+
+		if (empty($url)) {
+			$key = self::getKey();
+		} else {
+			$key = self::getKey($url);
+		}
+
+		RedisLight::config(self::$config['redis']);
+		RedisLight::executeCommand('DEL', array($key));
 
 	}
 
 }
-
 

@@ -2,32 +2,28 @@
 
 namespace Schalkt\RedisFullPageCache;
 
+
 /**
  * Class RedisLight
+ *
+ * @package Schalkt\RedisFullPageCache
  */
 class RedisLight
 {
 
 	/**
-	 * @var string
+	 * Default config
+	 *
+	 * @var array
 	 */
-	private static $hostname = null;
-	/**
-	 * @var int
-	 */
-	private static $port = null;
-	/**
-	 * @var
-	 */
-	private static $password;
-	/**
-	 * @var int
-	 */
-	private static $database = 0;
-	/**
-	 * @var int
-	 */
-	private static $timeout = 5;
+	private static $config = [
+		'host'     => '127.0.0.1',
+		'port'     => 6379,
+		'password' => null,
+		'database' => 0,
+		'timeout'  => 1,
+	];
+
 	/**
 	 * @var
 	 */
@@ -41,17 +37,22 @@ class RedisLight
 	{
 
 		self::$_socket = @stream_socket_client(
-			self::$hostname . ':' . self::$port,
-			$errorNumber,
-			$errorDescription,
-			self::$timeout ? self::$timeout : ini_get("default_socket_timeout")
+			self::$config['host'] . ':' . self::$config['port'], $errorNumber, $errorDescription,
+			self::$config['timeout'] ? self::$config['timeout'] : ini_get("default_socket_timeout")
 		);
+
 		if (self::$_socket) {
-			if (self::$password !== null)
-				self::executeCommand('AUTH', array(self::$password));
-			self::executeCommand('SELECT', array(self::$database));
+
+			if (self::$config['password'] !== null) {
+				self::executeCommand('AUTH', array(self::$config['password']));
+			}
+
+			self::executeCommand('SELECT', array(self::$config['database']));
+
 		} else {
+
 			self::error('Failed to connect to the cache server');
+
 		}
 	}
 
@@ -67,10 +68,10 @@ class RedisLight
 	public static function executeCommand($name, $params = array())
 	{
 
-		if (self::$_socket === null)
+		if (self::$_socket === null) {
 			self::connect();
+		}
 
-		// ha üres a key akkor nincs mit lekérdezni és a twemproxy el is fekszik emiatt
 		if (empty($params[0])) {
 			return;
 		}
@@ -78,34 +79,19 @@ class RedisLight
 		array_unshift($params, $name);
 		$command = '*' . count($params) . "\r\n";
 
-		// ha SETEX jön, de a time 0, akkor vissza, mert Redis nem szereti
 		if ($params[0] == 'SETEX') {
 			if (empty($params[2])) {
 				return;
 			}
 		}
 
-		foreach ($params as $arg)
+		foreach ($params as $arg) {
 			$command .= '$' . strlen($arg) . "\r\n" . $arg . "\r\n";
+		}
 
 		fwrite(self::$_socket, $command);
 
 		return self::parseResponse(implode(' ', $params));
-
-	}
-
-
-	/**
-	 * Default error page
-	 *
-	 * @param string $msg
-	 */
-	private static function error($msg = '')
-	{
-
-		header("HTTP/1.1 503 Service Unavailable");
-		require_once('error.php');
-		die();
 
 	}
 
@@ -118,60 +104,87 @@ class RedisLight
 	private static function parseResponse()
 	{
 
-		if (($line = fgets(self::$_socket)) === false)
+		if (($line = fgets(self::$_socket)) === false) {
 			self::error('Failed reading data from cache connection socket.');
+		}
+
 		$type = $line[0];
 		$line = substr($line, 1, -2);
 
 		switch ($type) {
-			case '+': // Status reply
+
+			case '+': // status reply
 				return true;
 
-			case '-': // Error reply
+			case '-': // error reply
 				self::error('Cache server error' . $line);
 
 			case ':': // Integer reply
 				// no cast to int as it is in the range of a signed 64 bit integer
 				return $line;
 
-			case '$': // Bulk replies
-				if ($line == '-1')
+			case '$': // bulk replies
+
+				if ($line == '-1') {
 					return null;
+				}
+
 				$length = $line + 2;
 				$data = '';
+
 				while ($length > 0) {
-					if (($block = fread(self::$_socket, $length)) === false)
+
+					if (($block = fread(self::$_socket, $length)) === false) {
 						self::error('Failed reading data from cache connection socket.');
+					}
 					$data .= $block;
 					$length -= (function_exists('mb_strlen') ? mb_strlen($block, '8bit') : strlen($block));
+
 				}
 
 				return substr($data, 0, -2);
 
-			case '*': // Multi-bulk replies
+			case '*': // multi-bulk replies
+
 				$count = (int)$line;
 				$data = array();
-				for ($i = 0; $i < $count; $i++)
+
+				for ($i = 0; $i < $count; $i++) {
 					$data[] = self::parseResponse();
+				}
 
 				return $data;
 
 			default:
+
 				self::error('Unable to parse data received from cache.');
 		}
 	}
 
 
 	/**
-	 * Redis config
+	 * Set redis config
 	 *
-	 * @param $params
+	 * @param $config
 	 */
-	public static function config($params)
+	public static function config($config)
 	{
 
-		self::$hostname = $params['host'];
-		self::$port = $params['port'];
+		self::$config = array_replace(self::$config, $config);
+
+	}
+
+	/**
+	 * Error page
+	 *
+	 * @param string $msg
+	 */
+	private static function error($msg = '')
+	{
+
+		header("HTTP/1.1 503 Service Unavailable");
+		require_once(__DIR__ . '/error.php');
+		die();
 
 	}
 
