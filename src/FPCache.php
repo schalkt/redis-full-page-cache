@@ -20,7 +20,8 @@ class FPCache
 
 		'debug'         => true,
 		'prefix'        => 'fpc', // change this to unique
-		'expire'        => 3600, // cache expire time
+		'expire'        => 10, // cache expire time
+		'compress'      => true, // remove comments (except IE) and
 		'redis'         => array(
 			'host'     => '127.0.0.1',
 			'port'     => 6379,
@@ -223,11 +224,20 @@ class FPCache
 			'status'  => $status,
 		);
 
+		if (!empty(self::$config['compress'])) {
+			$value = self::compress($value);
+		}
+
 		RedisLight::config(self::$config['redis']);
 		RedisLight::executeCommand('SETEX', array(self::getKey(), $expire, json_encode($data) . '|||' . $value));
 
 	}
 
+	/**
+	 * Delete cached page
+	 *
+	 * @param null $url
+	 */
 	public static function delete($url = null)
 	{
 
@@ -239,6 +249,27 @@ class FPCache
 
 		RedisLight::config(self::$config['redis']);
 		RedisLight::executeCommand('DEL', array($key));
+
+	}
+
+	/**
+	 * Compress HTML
+	 * To minify css or js use gulp tasks
+	 *
+	 * @param $html
+	 *
+	 * @return mixed
+	 */
+	protected static function compress($html)
+	{
+
+		// remove comments except IE version query <!--[if lt IE 9]>
+		$html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
+
+		// remove all EOL character
+		$html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
+
+		return $html;
 
 	}
 
