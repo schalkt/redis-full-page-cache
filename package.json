@@ -1,6 +1,6 @@
 {
     "name": "schalkt/redis-full-page-cache",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "devDependencies": {
         "gulp": "^3.9.0",
         "gulp-debug": "^2.0.1",
