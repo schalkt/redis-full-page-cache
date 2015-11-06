@@ -14,11 +14,25 @@ class FPCache
 	 */
 	protected static $config = array(
 
-		'prefix' => 'brite',
-		'debug'  => true,
-		'redis'  => array(
+		'prefix'        => 'brite',
+		'debug'         => true,
+		'expire'        => 5,
+		'redis'         => array(
 			'host' => '127.0.0.1',
 			'port' => 6379,
+		),
+		'enable_http'   => array(
+			'method' => array(
+				'GET',
+			),
+			'status' => array(
+				200,
+			),
+		),
+		'skip_patterns' => array(
+			'/\/api\/.*/',
+			'/\/admin\/.*/',
+			'/\.(jpg|png|gif|css|js|ico|txt)/',
 		),
 
 	);
@@ -27,15 +41,21 @@ class FPCache
 	 * @var null
 	 */
 	protected static $check = null;
-	/**
-	 * @var null
-	 */
-	protected static $data = null;
-	/**
-	 * @var string
-	 */
-	protected static $html = '';
 
+
+	/**
+	 * Set check to false and return false
+	 *
+	 * @return bool
+	 */
+	protected static function checkFalse()
+	{
+
+		self::$check = false;
+
+		return false;
+
+	}
 
 	/**
 	 * Check url
@@ -50,47 +70,32 @@ class FPCache
 		}
 
 		if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
-			self::$check = false;
-
-			return false;
+			return self::checkFalse();
 		}
 
 		if (!empty($_GET['rfpc'])) {
 
 			// skip load and save
 			if ($_GET['rfpc'] == 'skip') {
-				return false;
+				return self::checkFalse();
 			}
 
 			// skip only load
 			if ($action == 'load' && $_GET['rfpc'] == 'save') {
-				return false;
+				return self::checkFalse();
 			}
 
 		}
 
-		if (strpos($_SERVER['REQUEST_URI'], '/api') === 0 || strpos($_SERVER['REQUEST_URI'], '/admin')) {
-			self::$check = false;
-
-			return false;
+		if (!in_array($_SERVER['REQUEST_METHOD'], self::$config['enable_http']['method'])) {
+			return self::checkFalse();
 		}
 
-		if (isset($_GET['preview'])) {
-			return false;
-		}
+		foreach (self::$config['skip_patterns'] as $pattern) {
 
-		// is a file?
-		$pos = strrpos($_SERVER['REQUEST_URI'], '.');
-		if ($pos !== false) {
-
-			$extension = substr($_SERVER['REQUEST_URI'], $pos + 1);
-			$extensions = array('jpg', 'png', 'gif', 'css', 'js', 'ico', 'txt');
-			if (in_array($extension, $extensions)) {
-				self::$check = false;
-
-				return false;
+			if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
+				return self::checkFalse();
 			}
-
 		}
 
 	}
@@ -155,22 +160,31 @@ class FPCache
 			header($header);
 		}
 
+		// clean ob and echo the cached full page
+		if (ob_get_length()) ob_end_clean();
+
 		if (!empty(self::$config['redis']) && defined('APP_START')) {
 			$time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
 			$html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
 		}
 
-		// clean ob and echo the cached full page
-		if (ob_get_length()) ob_end_clean();
 		die($html);
 
 	}
 
-	public static function save($value, $status = 200, $expire = 500)
+	public static function save($value, $status = 200, $expire = null)
 	{
 
 		if (self::check('save') === false) {
 			return false;
+		}
+
+		if (!in_array($status, self::$config['enable_http']['status'])) {
+			return false;
+		}
+
+		if ($expire === null) {
+			$expire = self::$config['expire'];
 		}
 
 		$key = self::$config['prefix'] . ':' . md5(self::getUrl());

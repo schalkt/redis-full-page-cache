@@ -1,21 +1,27 @@
 {
-  "name": "schalkt/redis-full-page-cache",
-  "description": "Redis full page cache",
-  "keywords": ["redis", "full", "page", "cache"],
-  "type": "library",
-  "license": "MIT",
-  "authors": [
-    {
-      "name": "Tamas Schalk",
-      "homepage": "https://github.com/schalkt"
+    "name": "schalkt/redis-full-page-cache",
+    "description": "Redis full page cache",
+    "keywords": [
+        "redis",
+        "full",
+        "page",
+        "cache"
+    ],
+    "type": "library",
+    "version": "0.1.4",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tamas Schalk",
+            "homepage": "https://github.com/schalkt"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Schalkt\\RedisFullPageCache\\": "src"
+        }
     }
-  ],
-  "require": {
-    "php": ">=5.4.0"
-  },
-  "autoload": {
-    "psr-4": {
-      "Schalkt\\RedisFullPageCache\\": "src"
-    }
-  }
 }
