@@ -16,7 +16,7 @@ class FPCache
 
 		'prefix'        => 'brite',
 		'debug'         => true,
-		'expire'        => 5,
+		'expire'        => 3600,
 		'redis'         => array(
 			'host' => '127.0.0.1',
 			'port' => 6379,
