@@ -2,7 +2,6 @@
 
 namespace Schalkt\RedisFullPageCache;
 
-
 /**
  * Class FPCache
  *
@@ -18,42 +17,74 @@ class FPCache
 	 */
 	protected static $config = array(
 
-		'debug'         => true,
-		'prefix'        => 'fpc', // change this to unique
-		'expire'        => 10, // cache expire time
-		'compress'      => true, // remove comments (except IE) and
-		'redis'         => array(
+		'debug'       => true, // show render time in hidden html tag at the bottom of html
+		'system'      => 'redis',  // currently redis only
+		'prefix'      => 'fpc', // change this to unique
+		'expire'      => 604800, // cache expire time, 604800 = 1 week, 86400 = 1day
+		'compress'    => array(
+			'comments' => true, // remove comments from html (except IE version comments)
+			'eol'      => true // remove line endings from html (\r\n)
+		),
+		'redis'       => array(
+			'password' => null,
 			'host'     => '127.0.0.1',
 			'port'     => 6379,
-			'password' => null,
 			'database' => 0,
-			'timeout'  => 5,
+			'timeout'  => 0,
 		),
-		'commands'      => array(
+		'url'         => array(
+			'remove_query_strings' => true, // remove query params form url
+			'remove_ending_slash'  => true, // remove ending slash from url
+			'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false
+		),
+		'commands'    => array(
 			'key'  => 'rfpc',  // change this to custom
-			'skip' => 'preview', // skip cache : http://domain.com/?rfpc=preview
-			'save' => 'regenerate' // save cache : http://domain.com/?rfpc=regenerate
+			'skip' => 'preview', // skip cache : http://domain.tld/?rfpc=preview
+			'save' => 'regenerate' // save cache : http://domain.tld/?rfpc=regenerate
 		),
-		'enable_http'   => array(
+		'ids'         => array(
+			'limit' => 64, // maximum number of separately stored module ids
+		),
+		'enable_http' => array(
 			'method' => array(
-				'GET',
+				'GET',  // store only these methods, recommended only GET
 			),
 			'status' => array(
-				200,
+				200, // store only these status codes, recommended only 200
 			),
 		),
-		'skip_patterns' => array(
-			'/\/api\/.*/',  // skip api url by regexp pattern
-			'/\/admin\/.*/',  // skip admin url by regexp pattern
-			'/\.(jpg|png|gif|css|js|ico|txt)/',  // skip files by regexp pattern
+		'skip'        => array(
+			'patterns' => array(
+				'/\/api\/.*/',  // skip api url by regexp pattern
+				'/\/admin\/.*/',  // skip admin url by regexp pattern
+				'/\.(jpg|png|gif|css|js|ico|txt)/',  // skip files by regexp pattern
+			),
 		),
-
 	);
 
 	/**
 	 * @var null
 	 */
 	protected static $check = null;
+
+
+	/**
+	 * @var array
+	 */
+	protected static $mids = [];
+
+
+	/**
+	 * @param $key
+	 *
+	 * @return mixed
+	 */
+	public static function config($key)
+	{
+
+		return self::$config[$key];
+
+	}
 
 
 	/**
@@ -106,7 +137,7 @@ class FPCache
 			return self::checkFalse();
 		}
 
-		foreach (self::$config['skip_patterns'] as $pattern) {
+		foreach (self::$config['skip']['patterns'] as $pattern) {
 
 			if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
 				return self::checkFalse();
@@ -121,21 +152,27 @@ class FPCache
 	 *
 	 * @return string
 	 */
-	protected static function getUrl()
+	protected static function getUrl($url = null)
 	{
 
-		$url = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		if (empty($url)) {
+			$url = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		}
 
 		// remove query params
-		$pos = strpos($url, '?');
-		if ($pos !== false) {
-			$url = substr($url, 0, $pos);
+		if (!empty(self::$config['url']['remove_query_strings'])) {
+			$pos = strpos($url, '?');
+			if ($pos !== false) {
+				$url = substr($url, 0, $pos);
+			}
 		}
 
 		// remove last char if a slash
-		if ($url[strlen($url) - 1] == '/') {
-			$url = substr($url, 0, -1);
-		};
+		if (!empty(self::$config['url']['remove_ending_slash'])) {
+			if ($url[strlen($url) - 1] == '/') {
+				$url = substr($url, 0, -1);
+			};
+		}
 
 		return $url;
 
@@ -149,26 +186,50 @@ class FPCache
 	 *
 	 * @return string
 	 */
-	protected static function getKey($url = null)
+	protected static function getKey($url)
 	{
-		return self::$config['prefix'] . ':' . hash('sha1', empty($url) ? self::getUrl() : $url);
+
+		$key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
+
+		return self::$config['prefix'] . ':' . $key;
+	}
+
+	/**
+	 * @param $key
+	 * @param $id
+	 *
+	 * @return string
+	 */
+	protected static function getListKey($key, $id = '*')
+	{
+
+		$listkey = empty(self::$config['url']['hash']) ? $key . $id : hash(self::$config['url']['hash'], $key . $id);
+
+		return self::$config['prefix'] . ':mids-' . $listkey;
 	}
 
 
 	/**
-	 * Load cache
+	 * Load cached page
+	 *
+	 * @param null $url
 	 *
 	 * @return bool
 	 */
-	public static function load()
+	public static function load($url = null)
 	{
 
-		if (self::check('load') === false) {
-			return false;
+		if (empty($url)) {
+			$url = self::getUrl();
 		}
 
-		RedisLight::config(self::$config['redis']);
-		$html = RedisLight::executeCommand('GET', array(self::getKey()));
+		switch (self::$config['system']) {
+
+			case 'redis':
+				$html = self::loadRedis($url);
+				break;
+
+		}
 
 		if (empty($html)) {
 			return false;
@@ -180,7 +241,7 @@ class FPCache
 		$html = substr($html, $pos + 3);
 		$data = json_decode($json, true);
 
-		http_response_code($data['status']);
+		http_response_code($data['http_status']);
 		foreach ($data['headers'] as $header) {
 			header($header);
 		}
@@ -198,57 +259,145 @@ class FPCache
 	}
 
 	/**
-	 * @param      $value
-	 * @param int  $status
-	 * @param null $expire
+	 * @param array $params
 	 *
 	 * @return bool
 	 */
-	public static function save($value, $status = 200, $expire = null)
+	public static function save($params = array())
 	{
+
+		if (!isset($params['content'])) {
+			return false;
+		}
 
 		if (self::check('save') === false) {
 			return false;
 		}
 
-		if (!in_array($status, self::$config['enable_http']['status'])) {
+		$defaults = array(
+			'http_status' => 200,
+			'expire'      => self::$config['expire'],
+			'url'         => self::getUrl(),
+		);
+
+		$params = array_replace($defaults, $params);
+
+
+		if (!in_array($params['http_status'], self::$config['enable_http']['status'])) {
 			return false;
 		}
 
-		if ($expire === null) {
-			$expire = self::$config['expire'];
-		}
-
 		$data = array(
-			'headers' => headers_list(),
-			'status'  => $status,
+			'headers'     => headers_list(),
+			'http_status' => $params['http_status'],
 		);
 
-		if (!empty(self::$config['compress'])) {
-			$value = self::compress($value);
+		$value = self::compress($params['content']);
+
+		switch (self::$config['system']) {
+
+			case 'redis':
+				self::saveRedis($params['url'], $params['expire'], json_encode($data) . '|||' . $value);
+				break;
+
 		}
 
-		RedisLight::config(self::$config['redis']);
-		RedisLight::executeCommand('SETEX', array(self::getKey(), $expire, json_encode($data) . '|||' . $value));
+	}
+
+	/**
+	 * @return array|string|void
+	 */
+	protected static function loadRedis($url)
+	{
+
+		self::initRedis();
+
+		return CacheRedis::executeCommand('GET', array(self::getKey($url)));
 
 	}
+
+
+	/**
+	 * @param $expire
+	 * @param $data
+	 */
+	protected static function saveRedis($url, $expire, $data)
+	{
+
+		self::initRedis();
+		$urlkey = self::getKey($url);
+		CacheRedis::executeCommand('SETEX', array($urlkey, $expire, $data));
+
+
+		foreach (self::$mids as $module => $moduleId) {
+
+			if (is_array(($moduleId))) {
+
+				if (count($moduleId) > self::$config['ids']['limit']) {
+
+					self::addToList($module, '*', $urlkey, $expire);
+
+				} else {
+
+					foreach ($moduleId as $index => $id) {
+						self::addToList($module, $id, $urlkey, $expire);
+					}
+				}
+
+			} else {
+
+				self::addToList($module, $moduleId, $urlkey, $expire);
+			}
+
+		}
+
+	}
+
+
+	/**
+	 * @param $module
+	 * @param $moduleId
+	 * @param $urlkey
+	 * @param $expire
+	 */
+	protected static function addToList($module, $moduleId, $urlkey, $expire)
+	{
+
+		CacheRedis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
+		CacheRedis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
+
+	}
+
+
+	/**
+	 * @param string $url
+	 */
+	public static function deleteByUrl($url = null)
+	{
+
+		$url = self::getUrl($url);
+
+		switch (self::$config['system']) {
+
+			case 'redis':
+				self::deleteRedis($url);
+				break;
+
+		}
+
+	}
+
 
 	/**
 	 * Delete cached page
 	 *
 	 * @param null $url
 	 */
-	public static function delete($url = null)
+	public static function deleteRedis($url)
 	{
 
-		if (empty($url)) {
-			$key = self::getKey();
-		} else {
-			$key = self::getKey($url);
-		}
-
-		RedisLight::config(self::$config['redis']);
-		RedisLight::executeCommand('DEL', array($key));
+		self::initRedis();
+		CacheRedis::executeCommand('DEL', array(self::getKey($url)));
 
 	}
 
@@ -264,12 +413,118 @@ class FPCache
 	{
 
 		// remove comments except IE version query <!--[if lt IE 9]>
-		$html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
+		if (!empty(self::$config['compress']['comments'])) {
+			$html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
+		}
 
 		// remove all EOL character
-		$html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
+		if (!empty(self::$config['compress']['eol'])) {
+			$html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
+		}
 
 		return $html;
+
+	}
+
+	/**
+	 * @param null $limit
+	 *
+	 * @return null
+	 */
+	public static function elementLimit($limit = null)
+	{
+
+		if ($limit !== null) {
+			return self::$config['ids']['limit'] = $limit;
+		} else {
+			return self::$config['ids']['limit'];
+		}
+
+	}
+
+
+	/**
+	 * @param        $module
+	 * @param string $moduleIds
+	 *
+	 * @return array
+	 */
+	public static function element($module, $moduleIds = '*')
+	{
+
+		if ($moduleIds === '*') {
+			self::$mids[$module] = $moduleIds;
+
+			return self::$mids;
+		}
+
+		if (isset(self::$mids[$module])) {
+			if (self::$mids[$module] === '*') {
+				return self::$mids;
+			}
+		}
+
+		$moduleIds = (array)$moduleIds;
+
+		if (isset(self::$mids[$module])) {
+
+			self::$mids[$module] = array_merge(self::$mids[$module], $moduleIds);
+
+		} else {
+			self::$mids[$module] = $moduleIds;
+		}
+
+		return self::$mids;
+
+	}
+
+
+	/**
+	 * @param      $module
+	 * @param null $moduleId
+	 */
+	public static function deleteByModule($module, $moduleId = null)
+	{
+
+
+		// check list without id
+		$listKey = self::getListKey($module);
+		$list = CacheRedis::executeCommand('LRANGE', array($listKey, 0, -1));
+		if (!empty($list)) {
+			CacheRedis::executeCommand('DEL', $list);
+		}
+
+		// check list with id
+		$listKey = self::getListKey($module, $moduleId);
+		$list = CacheRedis::executeCommand('LRANGE', array($listKey, 0, -1));
+		if (!empty($list)) {
+			CacheRedis::executeCommand('DEL', $list);
+		}
+
+	}
+
+	/**
+	 * Delete all items from cache
+	 */
+	public static function flush()
+	{
+
+		self::initRedis();
+		$keys = CacheRedis::executeCommand('KEYS', array(self::$config['prefix'] . ':*'));
+
+		return CacheRedis::executeCommand('DEL', $keys);
+
+	}
+
+
+	/**
+	 *
+	 */
+	protected static function initRedis()
+	{
+
+		require_once __DIR__ . '/CacheRedis.php';
+		CacheRedis::config(self::$config['redis']);
 
 	}
 

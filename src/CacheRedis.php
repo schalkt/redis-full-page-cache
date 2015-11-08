@@ -4,11 +4,11 @@ namespace Schalkt\RedisFullPageCache;
 
 
 /**
- * Class RedisLight
+ * Class CacheRedis
  *
  * @package Schalkt\RedisFullPageCache
  */
-class RedisLight
+class CacheRedis
 {
 
 	/**

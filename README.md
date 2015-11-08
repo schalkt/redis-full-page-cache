@@ -12,14 +12,13 @@ Setup
 1. Put these lines to the top of public/index.php 
 ```
 define('APP_START', microtime(true));
-require_once __DIR__.'/../vendor/autoload.php';
+require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/FPCache.php';
 Schalkt\RedisFullPageCache\FPCache::load();
 ```
-or (faster)
+or (ten times slower)
 ```
 define('APP_START', microtime(true));
-require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/RedisLight.php';
-require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/FPCache.php';
+require_once __DIR__.'/../vendor/autoload.php';
 Schalkt\RedisFullPageCache\FPCache::load();
 ```
 2. Put this filter to the filter.php (in Laravel 4.2)
@@ -30,9 +29,9 @@ Route::filter('cache', function ($route, $request, $response = null) {
     }
 });
 ```
-3. Add before and after filter in the routes.php (in Laravel 4.2)
+3. Add after filter in the routes.php (in Laravel 4.2)
 ```
-Route::group(array('before' => 'cache', 'after' => 'cache'), function () {
+Route::group(array('after' => 'cache'), function () {
     Route::get('/', "IndexController@indexAction");
     ...
 });
