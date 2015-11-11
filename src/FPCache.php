@@ -15,12 +15,12 @@ class FPCache
 	 *
 	 * @var null
 	 */
-	protected static $config = array(
+	public static $config = array(
 
 		'debug'       => true, // show render time in hidden html tag at the bottom of html
 		'system'      => 'redis',  // currently redis only
-		'prefix'      => 'fpc', // change this to unique
-		'expire'      => 604800, // cache expire time, 604800 = 1 week, 86400 = 1day
+		'suffix'      => 'fpc', // change this to unique
+		'expire'      => 3600, // cache expire time, 604800 = 1 week, 86400 = 1day
 		'compress'    => array(
 			'comments' => true, // remove comments from html (except IE version comments)
 			'eol'      => true // remove line endings from html (\r\n)
@@ -35,7 +35,7 @@ class FPCache
 		'url'         => array(
 			'remove_query_strings' => true, // remove query params form url
 			'remove_ending_slash'  => true, // remove ending slash from url
-			'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false
+			'hash'                 => false, // store method of url : 'md5', 'sha1' or false, recommended md5 or sha1
 		),
 		'commands'    => array(
 			'key'  => 'rfpc',  // change this to custom
@@ -43,7 +43,7 @@ class FPCache
 			'save' => 'regenerate' // save cache : http://domain.tld/?rfpc=regenerate
 		),
 		'ids'         => array(
-			'limit' => 64, // maximum number of separately stored module ids
+			'limit' => 6, // maximum number of separately stored module ids list
 		),
 		'enable_http' => array(
 			'method' => array(
@@ -69,12 +69,16 @@ class FPCache
 
 
 	/**
+	 * Module and module id relations
+	 *
 	 * @var array
 	 */
 	protected static $mids = [];
 
 
 	/**
+	 * Get config param
+	 *
 	 * @param $key
 	 *
 	 * @return mixed
@@ -113,10 +117,6 @@ class FPCache
 			return self::$check;
 		}
 
-		if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
-			return self::checkFalse();
-		}
-
 		if (!empty($_GET[self::$config['commands']['key']])) {
 
 			$qp = $_GET[self::$config['commands']['key']];
@@ -132,6 +132,16 @@ class FPCache
 			}
 
 		}
+
+		if ($action == 'load') {
+			return;
+		}
+
+
+		if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
+			return self::checkFalse();
+		}
+
 
 		if (!in_array($_SERVER['REQUEST_METHOD'], self::$config['enable_http']['method'])) {
 			return self::checkFalse();
@@ -180,7 +190,7 @@ class FPCache
 
 
 	/**
-	 * Generate key
+	 * Get the cache key
 	 *
 	 * @param null $url
 	 *
@@ -191,21 +201,25 @@ class FPCache
 
 		$key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
 
-		return self::$config['prefix'] . ':' . $key;
+		return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . self::$config['suffix'];
 	}
 
 	/**
+	 * Get the list key
+	 *
 	 * @param $key
 	 * @param $id
 	 *
 	 * @return string
 	 */
-	protected static function getListKey($key, $id = '*')
+	protected static function getListKey($key, $id = '')
 	{
 
-		$listkey = empty(self::$config['url']['hash']) ? $key . $id : hash(self::$config['url']['hash'], $key . $id);
+		$name = $key . '#' . $id;
+		$listkey = empty(self::$config['url']['hash']) ? $name : hash(self::$config['url']['hash'], $name);
 
-		return self::$config['prefix'] . ':mids-' . $listkey;
+		return $listkey . '-list:' . self::$config['suffix'];
+
 	}
 
 
@@ -218,6 +232,11 @@ class FPCache
 	 */
 	public static function load($url = null)
 	{
+
+
+		if (self::check('load') === false) {
+			return false;
+		}
 
 		if (empty($url)) {
 			$url = self::getUrl();
@@ -236,10 +255,7 @@ class FPCache
 		}
 
 		// get additional info (headers and http status)
-		$pos = strpos($html, '|||');
-		$json = substr($html, 0, $pos);
-		$html = substr($html, $pos + 3);
-		$data = json_decode($json, true);
+		list($html, $data) = self::prepareData($html);
 
 		http_response_code($data['http_status']);
 		foreach ($data['headers'] as $header) {
@@ -259,6 +275,29 @@ class FPCache
 	}
 
 	/**
+	 * Split params and html from cached data
+	 *
+	 * @param $html
+	 *
+	 * @return array
+	 */
+	protected static function prepareData($html)
+	{
+
+		// get additional info (headers and http status)
+		$pos = strpos($html, '|||');
+		$json = substr($html, 0, $pos);
+		$html = substr($html, $pos + 3);
+		$data = json_decode($json, true);
+
+		return array($html, $data);
+
+	}
+
+
+	/**
+	 * Save page to cache
+	 *
 	 * @param array $params
 	 *
 	 * @return bool
@@ -278,6 +317,7 @@ class FPCache
 			'http_status' => 200,
 			'expire'      => self::$config['expire'],
 			'url'         => self::getUrl(),
+			'headers'     => headers_list(),
 		);
 
 		$params = array_replace($defaults, $params);
@@ -288,8 +328,9 @@ class FPCache
 		}
 
 		$data = array(
-			'headers'     => headers_list(),
 			'http_status' => $params['http_status'],
+			'url'         => $params['url'],
+			'expire'      => $params['expire'],
 		);
 
 		$value = self::compress($params['content']);
@@ -305,6 +346,8 @@ class FPCache
 	}
 
 	/**
+	 * Load cached page
+	 *
 	 * @return array|string|void
 	 */
 	protected static function loadRedis($url)
@@ -318,6 +361,8 @@ class FPCache
 
 
 	/**
+	 * Save redis cache and relations list
+	 *
 	 * @param $expire
 	 * @param $data
 	 */
@@ -328,15 +373,12 @@ class FPCache
 		$urlkey = self::getKey($url);
 		CacheRedis::executeCommand('SETEX', array($urlkey, $expire, $data));
 
-
 		foreach (self::$mids as $module => $moduleId) {
 
 			if (is_array(($moduleId))) {
 
 				if (count($moduleId) > self::$config['ids']['limit']) {
-
-					self::addToList($module, '*', $urlkey, $expire);
-
+					self::addToList($module, '', $urlkey, $expire);
 				} else {
 
 					foreach ($moduleId as $index => $id) {
@@ -355,6 +397,8 @@ class FPCache
 
 
 	/**
+	 * Add module and module ids to the relation list
+	 *
 	 * @param $module
 	 * @param $moduleId
 	 * @param $urlkey
@@ -370,33 +414,15 @@ class FPCache
 
 
 	/**
-	 * @param string $url
+	 * Delete cached page by url
+	 *
+	 * @param null $url
 	 */
 	public static function deleteByUrl($url = null)
 	{
 
-		$url = self::getUrl($url);
-
-		switch (self::$config['system']) {
-
-			case 'redis':
-				self::deleteRedis($url);
-				break;
-
-		}
-
-	}
-
-
-	/**
-	 * Delete cached page
-	 *
-	 * @param null $url
-	 */
-	public static function deleteRedis($url)
-	{
-
 		self::initRedis();
+		$url = self::getUrl($url);
 		CacheRedis::executeCommand('DEL', array(self::getKey($url)));
 
 	}
@@ -427,6 +453,8 @@ class FPCache
 	}
 
 	/**
+	 * Get or set the module ids limit / module / page
+	 *
 	 * @param null $limit
 	 *
 	 * @return null
@@ -444,22 +472,24 @@ class FPCache
 
 
 	/**
+	 * Store module and id for cached page relation
+	 *
 	 * @param        $module
 	 * @param string $moduleIds
 	 *
 	 * @return array
 	 */
-	public static function element($module, $moduleIds = '*')
+	public static function element($module, $moduleIds = '')
 	{
 
-		if ($moduleIds === '*') {
+		if ($moduleIds === '') {
 			self::$mids[$module] = $moduleIds;
 
 			return self::$mids;
 		}
 
 		if (isset(self::$mids[$module])) {
-			if (self::$mids[$module] === '*') {
+			if (self::$mids[$module] === '') {
 				return self::$mids;
 			}
 		}
@@ -480,16 +510,18 @@ class FPCache
 
 
 	/**
+	 * Delete cached pages by module and id
+	 *
 	 * @param      $module
 	 * @param null $moduleId
 	 */
 	public static function deleteByModule($module, $moduleId = null)
 	{
 
-
 		// check list without id
 		$listKey = self::getListKey($module);
 		$list = CacheRedis::executeCommand('LRANGE', array($listKey, 0, -1));
+
 		if (!empty($list)) {
 			CacheRedis::executeCommand('DEL', $list);
 		}
@@ -510,7 +542,7 @@ class FPCache
 	{
 
 		self::initRedis();
-		$keys = CacheRedis::executeCommand('KEYS', array(self::$config['prefix'] . ':*'));
+		$keys = CacheRedis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
 		return CacheRedis::executeCommand('DEL', $keys);
 
@@ -518,13 +550,53 @@ class FPCache
 
 
 	/**
-	 *
+	 * Load Redis Cache Class and set config
 	 */
 	protected static function initRedis()
 	{
 
 		require_once __DIR__ . '/CacheRedis.php';
 		CacheRedis::config(self::$config['redis']);
+
+	}
+
+
+	/**
+	 * Walk
+	 *
+	 * @param $callback
+	 */
+	public static function walk($callback)
+	{
+
+		self::initRedis();
+
+		// get all cached html page keys
+		$keys = CacheRedis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
+
+		foreach ($keys as $key) {
+
+			// get a html page data
+			$html = CacheRedis::executeCommand('GET', array($key));
+
+			// split params and html
+			list($html, $params) = self::prepareData($html);
+
+			// for html modification checking
+			$crc = crc32($html);
+
+			if (is_callable($callback)) {
+
+				$html = $callback($html, $params);
+
+				// html modified?
+				if ($crc != crc32($html)) {
+					$params['content'] = $html;
+					self::save($params);
+				}
+
+			}
+		}
 
 	}
 

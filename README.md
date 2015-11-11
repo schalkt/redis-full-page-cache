@@ -1,42 +1,49 @@
 # redis-full-page-cache
 
-This project under development, but this is a working version.
+> The project is under development, but this is a working and stable version.
+
 
 Install
 ---
-` composer require schalkt/redis-full-page-cache `
 
+Download from here:  [https://github.com/schalkt/redis-full-page-cache](https://github.com/schalkt/redis-full-page-cache)
+> Composer reguire soon.
 
-Setup
+Setup in Laravel 4.2
 ---
 1. Put these lines to the top of public/index.php 
 ```
-define('APP_START', microtime(true));
-require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/FPCache.php';
-Schalkt\RedisFullPageCache\FPCache::load();
+define('APP_START', microtime(true)); // require for debug only
+require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/FPCache.php'; // 10 times faster than composer autoload :)
+Schalkt\RedisFullPageCache\FPCache::load(); 
 ```
-or (ten times slower)
+2. Save the page content in the Controller after rendering the view
 ```
-define('APP_START', microtime(true));
-require_once __DIR__.'/../vendor/autoload.php';
-Schalkt\RedisFullPageCache\FPCache::load();
+$content = View::make('index');
+Schalkt\RedisFullPageCache\FPCache::save(array(
+    'content' => (string)$content) // required
+    'http_status' => 200, // not required, default 200
+	'expire'      => 3600, // not required, default in FPCache::$config['expire']
+	'url'         => 'www.domain.tld/shop' // not required, default $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], see FPCache::$config['url']
+	'headers'     => null // not required, default headers_list()    
+);
+return Response::make($content, 200);
 ```
-2. Put this filter to the filter.php (in Laravel 4.2)
+3. Extends all model class with FPCEloquent
 ```
-Route::filter('cache', function ($route, $request, $response = null) {
-    if (!is_null($response)) {
-        FPCache::save($response->getContent(), $response->getStatusCode(), 3600 * 24);
-    }
-});
-```
-3. Add after filter in the routes.php (in Laravel 4.2)
-```
-Route::group(array('after' => 'cache'), function () {
-    Route::get('/', "IndexController@indexAction");
+use Schalkt\RedisFullPageCache\FPCEloquent;
+class BaseModel extends FPCEloquent
+{
     ...
-});
+}
 ```
-4. Setup Redis config in FPCache.php file
+4. Replace Eloquent methods to FpcFirst(), FpcGet() and FpcPluck('title')
+```
+Office::FpcGet();
+Users::active()->FpcFirst();
+Project::where('status', 2)->FpcPluck('title');
+```
+5. Setup config in FPCache.php file
 ```
 'prefix' => 'fpc',
 'debug'  => true,
@@ -45,3 +52,8 @@ Route::group(array('after' => 'cache'), function () {
     'port' => 6379,
 )
 ```
+
+TODO
+---
+- Unit tests
+- File cache for large HTML pages
