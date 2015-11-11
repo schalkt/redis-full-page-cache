@@ -233,10 +233,38 @@ class FPCache
 	public static function load($url = null)
 	{
 
-
 		if (self::check('load') === false) {
-			return false;
+			return null;
 		}
+
+		list($html, $data) = self::get($url);
+
+		if (empty($html)) {
+			return;
+		}
+
+		if (!empty($data)) {
+			http_response_code($data['http_status']);
+			foreach ($data['headers'] as $header) {
+				header($header);
+			}
+		}
+
+		if (ob_get_length()) ob_end_clean();
+		die($html);
+
+	}
+
+
+	/**
+	 * Get cached page
+	 *
+	 * @param null $url
+	 *
+	 * @return bool
+	 */
+	public static function get($url = null)
+	{
 
 		if (empty($url)) {
 			$url = self::getUrl();
@@ -251,26 +279,18 @@ class FPCache
 		}
 
 		if (empty($html)) {
-			return false;
+			return array(null, null);
 		}
 
 		// get additional info (headers and http status)
 		list($html, $data) = self::prepareData($html);
-
-		http_response_code($data['http_status']);
-		foreach ($data['headers'] as $header) {
-			header($header);
-		}
-
-		// clean ob and echo the cached full page
-		if (ob_get_length()) ob_end_clean();
 
 		if (!empty(self::$config['debug']) && defined('APP_START')) {
 			$time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
 			$html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
 		}
 
-		die($html);
+		return array($html, $data);
 
 	}
 
