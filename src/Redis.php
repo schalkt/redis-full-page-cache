@@ -1,14 +1,14 @@
 <?php
 
-namespace Schalkt\RedisFullPageCache;
+namespace Schalkt\Schache;
 
 
 /**
- * Class CacheRedis
+ * Class Redis
  *
- * @package Schalkt\RedisFullPageCache
+ * @package Schalkt\Schache
  */
-class CacheRedis
+class Redis
 {
 
 	/**
@@ -183,7 +183,7 @@ class CacheRedis
 	{
 
 		header("HTTP/1.1 503 Service Unavailable");
-		require_once(__DIR__ . '/error.php');
+		require_once(__DIR__ . '/../views/error.php');
 		die();
 
 	}

@@ -1,9 +1,9 @@
 <?php
 
-namespace Schalkt\RedisFullPageCache;
+namespace Schalkt\Schache;
 
 
-class FPCEloquent extends \Illuminate\Database\Eloquent\Model
+class Eloquent extends \Illuminate\Database\Eloquent\Model
 {
 
 	public function scopeFpcPluck($query, $pluck = '')
@@ -15,11 +15,22 @@ class FPCEloquent extends \Illuminate\Database\Eloquent\Model
 
 	}
 
+	public function scopeFpcCount($query)
+	{
+
+		$result = $query->count();
+		FPCache::element($this->table);
+
+		return $result;
+
+	}
+
 	public function scopeFpcFirst($query, $columns = array('*'))
 	{
 
 		$result = $query->first($columns);
-		FPCache::element($this->table, $result->getKey());
+		if (!empty($result))
+			FPCache::element($this->table, $result->getKey());
 
 		return $result;
 

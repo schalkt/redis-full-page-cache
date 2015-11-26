@@ -1,11 +1,11 @@
 <?php
 
-namespace Schalkt\RedisFullPageCache;
+namespace Schalkt\Schache;
 
 /**
  * Class FPCache
  *
- * @package Schalkt\RedisFullPageCache
+ * @package Schalkt\Schache
  */
 class FPCache
 {
@@ -19,8 +19,8 @@ class FPCache
 
 		'debug'       => true, // show render time in hidden html tag at the bottom of html
 		'system'      => 'redis',  // currently redis only
-		'suffix'      => 'fpc', // change this to unique
-		'expire'      => 3600, // cache expire time, 604800 = 1 week, 86400 = 1day
+		'suffix'      => 'fpc-brite', // change this to unique
+		'expire'      => 5, // cache expire time, 604800 = 1 week, 86400 = 1day, 0 = disabled
 		'compress'    => array(
 			'comments' => true, // remove comments from html (except IE version comments)
 			'eol'      => true // remove line endings from html (\r\n)
@@ -30,12 +30,12 @@ class FPCache
 			'host'     => '127.0.0.1',
 			'port'     => 6379,
 			'database' => 0,
-			'timeout'  => 0,
+			'timeout'  => 2,
 		),
 		'url'         => array(
 			'remove_query_strings' => true, // remove query params form url
 			'remove_ending_slash'  => true, // remove ending slash from url
-			'hash'                 => false, // store method of url : 'md5', 'sha1' or false, recommended md5 or sha1
+			'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false, recommended md5 or sha1
 		),
 		'commands'    => array(
 			'key'  => 'rfpc',  // change this to custom
@@ -43,7 +43,7 @@ class FPCache
 			'save' => 'regenerate' // save cache : http://domain.tld/?rfpc=regenerate
 		),
 		'ids'         => array(
-			'limit' => 6, // maximum number of separately stored module ids list
+			'limit' => 7, // maximum number of separately stored module ids list
 		),
 		'enable_http' => array(
 			'method' => array(
@@ -342,15 +342,19 @@ class FPCache
 
 		$params = array_replace($defaults, $params);
 
-
 		if (!in_array($params['http_status'], self::$config['enable_http']['status'])) {
 			return false;
+		}
+
+		if (isset($params['compress'])) {
+			self::$config['compress'] = $params['compress'];
 		}
 
 		$data = array(
 			'http_status' => $params['http_status'],
 			'url'         => $params['url'],
 			'expire'      => $params['expire'],
+			'headers'     => $params['headers'],
 		);
 
 		$value = self::compress($params['content']);
@@ -375,7 +379,7 @@ class FPCache
 
 		self::initRedis();
 
-		return CacheRedis::executeCommand('GET', array(self::getKey($url)));
+		return Redis::executeCommand('GET', array(self::getKey($url)));
 
 	}
 
@@ -391,7 +395,7 @@ class FPCache
 
 		self::initRedis();
 		$urlkey = self::getKey($url);
-		CacheRedis::executeCommand('SETEX', array($urlkey, $expire, $data));
+		Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
 
 		foreach (self::$mids as $module => $moduleId) {
 
@@ -427,8 +431,8 @@ class FPCache
 	protected static function addToList($module, $moduleId, $urlkey, $expire)
 	{
 
-		CacheRedis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
-		CacheRedis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
+		Redis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
+		Redis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
 
 	}
 
@@ -443,7 +447,7 @@ class FPCache
 
 		self::initRedis();
 		$url = self::getUrl($url);
-		CacheRedis::executeCommand('DEL', array(self::getKey($url)));
+		Redis::executeCommand('DEL', array(self::getKey($url)));
 
 	}
 
@@ -535,23 +539,40 @@ class FPCache
 	 * @param      $module
 	 * @param null $moduleId
 	 */
-	public static function deleteByModule($module, $moduleId = null)
+	public static function deleteByModule($module, $moduleId = null, $regenerate = null)
 	{
 
 		// check list without id
 		$listKey = self::getListKey($module);
-		$list = CacheRedis::executeCommand('LRANGE', array($listKey, 0, -1));
+		$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 
 		if (!empty($list)) {
-			CacheRedis::executeCommand('DEL', $list);
+
+
+			Redis::executeCommand('DEL', $list);
 		}
 
 		// check list with id
 		$listKey = self::getListKey($module, $moduleId);
-		$list = CacheRedis::executeCommand('LRANGE', array($listKey, 0, -1));
+		$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 		if (!empty($list)) {
-			CacheRedis::executeCommand('DEL', $list);
+			Redis::executeCommand('DEL', $list);
 		}
+
+	}
+
+	public static function regenerate()
+	{
+
+		// redirecting...
+		// TODO
+		ignore_user_abort(true);
+		set_time_limit(0);
+		ob_end_flush();
+		flush();
+		fastcgi_finish_request(); // important when using php-fpm!
+		sleep(5); // User won't feel this sleep because he'll already be away
+		// do some work after user has been redirected
 
 	}
 
@@ -562,9 +583,9 @@ class FPCache
 	{
 
 		self::initRedis();
-		$keys = CacheRedis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
+		$keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
-		return CacheRedis::executeCommand('DEL', $keys);
+		return Redis::executeCommand('DEL', $keys);
 
 	}
 
@@ -575,8 +596,8 @@ class FPCache
 	protected static function initRedis()
 	{
 
-		require_once __DIR__ . '/CacheRedis.php';
-		CacheRedis::config(self::$config['redis']);
+		require_once __DIR__ . '/Redis.php';
+		Redis::config(self::$config['redis']);
 
 	}
 
@@ -592,12 +613,12 @@ class FPCache
 		self::initRedis();
 
 		// get all cached html page keys
-		$keys = CacheRedis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
+		$keys = Redis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
 
 		foreach ($keys as $key) {
 
 			// get a html page data
-			$html = CacheRedis::executeCommand('GET', array($key));
+			$html = Redis::executeCommand('GET', array($key));
 
 			// split params and html
 			list($html, $params) = self::prepareData($html);

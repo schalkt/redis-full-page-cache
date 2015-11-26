@@ -1,4 +1,6 @@
-# redis-full-page-cache
+# schache
+
+**Redis full page cache for Laravel 4.2**
 
 > The project is under development, but this is a working and stable version.
 
@@ -6,7 +8,7 @@
 Install
 ---
 
-Download from here:  [https://github.com/schalkt/redis-full-page-cache](https://github.com/schalkt/redis-full-page-cache)
+Download from here:  [https://github.com/schalkt/schache](https://github.com/schalkt/schache)
 > Composer reguire soon.
 
 Setup in Laravel 4.2
@@ -14,13 +16,13 @@ Setup in Laravel 4.2
 1. Put these lines to the top of public/index.php 
 ```
 define('APP_START', microtime(true)); // require for debug only
-require_once __DIR__.'/../vendor/schalkt/redis-full-page-cache/src/FPCache.php'; // 10 times faster than composer autoload :)
-Schalkt\RedisFullPageCache\FPCache::load(); 
+require_once __DIR__.'/../vendor/schalkt/schache/src/FPCache.php'; // 10 times faster than composer autoload :)
+Schalkt\Schache\FPCache::load(); 
 ```
 2. Save the page content in the Controller after rendering the view
 ```
 $content = View::make('index');
-Schalkt\RedisFullPageCache\FPCache::save(array(
+Schalkt\Schache\FPCache::save(array(
     'content' => (string)$content) // required
     'http_status' => 200, // not required, default 200
 	'expire'      => 3600, // not required, default in FPCache::$config['expire']
@@ -31,7 +33,7 @@ return Response::make($content, 200);
 ```
 3. Extends all model class with FPCEloquent
 ```
-use Schalkt\RedisFullPageCache\FPCEloquent;
+use Schalkt\Schache\FPCEloquent;
 class BaseModel extends FPCEloquent
 {
     ...
