@@ -13,13 +13,23 @@ Download from here:  [https://github.com/schalkt/schache](https://github.com/sch
 
 Setup in Laravel 4.2
 ---
-1. Put these lines to the top of public/index.php 
+1. Copy default configuration file (schache/config/default.php) to custom location
+```
+'prefix' => 'fpc-sitename',
+'debug'  => true,
+'redis'  => array(
+    'host' => '127.0.0.1',
+    'port' => 6379,
+)
+```
+2. Put these lines to the top of public/index.php 
 ```
 define('APP_START', microtime(true)); // require for debug only
 require_once __DIR__.'/../vendor/schalkt/schache/src/FPCache.php'; // 10 times faster than composer autoload :)
-Schalkt\Schache\FPCache::load(); 
+Schalkt\Schache\FPCache::boot(__DIR__ . '/../app/config/schache.php'); // boot cache system and load the custom config file
+Schalkt\Schache\FPCache::load(); // get the whole page from the cache if available
 ```
-2. Save the page content in the Controller after rendering the view
+3. Save the page content in the Controller after rendering the view
 ```
 $content = View::make('index');
 Schalkt\Schache\FPCache::save(array(
@@ -31,27 +41,18 @@ Schalkt\Schache\FPCache::save(array(
 );
 return Response::make($content, 200);
 ```
-3. Extends all model class with \Schalkt\Schache\Eloquent
+4. Extends all model class with \Schalkt\Schache\Eloquent
 ```
 class BaseModel extends \Schalkt\Schache\Eloquent
 {
     ...
 }
 ```
-4. Replace Eloquent first(), get() and pluck() methods to fpcFirst(), fpcGet() and fpcPluck('title')
+5. Replace Eloquent first(), get() and pluck() methods to fpcFirst(), fpcGet() and fpcPluck('title')
 ```
 Office::fpcGet();
 Users::active()->fpcFirst();
 Project::where('status', 2)->fpcPluck('title');
-```
-5. Configuration in FPCache.php file
-```
-'prefix' => 'fpc-sitename',
-'debug'  => true,
-'redis'  => array(
-    'host' => '127.0.0.1',
-    'port' => 6379,
-)
 ```
 
 TODO

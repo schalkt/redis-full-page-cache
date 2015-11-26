@@ -15,52 +15,7 @@ class FPCache
 	 *
 	 * @var null
 	 */
-	public static $config = array(
-
-		'debug'       => true, // show render time in hidden html tag at the bottom of html
-		'system'      => 'redis',  // currently redis only
-		'suffix'      => 'fpc-brite', // change this to unique
-		'expire'      => 5, // cache expire time, 604800 = 1 week, 86400 = 1day, 0 = disabled
-		'compress'    => array(
-			'comments' => true, // remove comments from html (except IE version comments)
-			'eol'      => true // remove line endings from html (\r\n)
-		),
-		'redis'       => array(
-			'password' => null,
-			'host'     => '127.0.0.1',
-			'port'     => 6379,
-			'database' => 0,
-			'timeout'  => 2,
-		),
-		'url'         => array(
-			'remove_query_strings' => true, // remove query params form url
-			'remove_ending_slash'  => true, // remove ending slash from url
-			'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false, recommended md5 or sha1
-		),
-		'commands'    => array(
-			'key'  => 'rfpc',  // change this to custom
-			'skip' => 'preview', // skip cache : http://domain.tld/?rfpc=preview
-			'save' => 'regenerate' // save cache : http://domain.tld/?rfpc=regenerate
-		),
-		'ids'         => array(
-			'limit' => 7, // maximum number of separately stored module ids list
-		),
-		'enable_http' => array(
-			'method' => array(
-				'GET',  // store only these methods, recommended only GET
-			),
-			'status' => array(
-				200, // store only these status codes, recommended only 200
-			),
-		),
-		'skip'        => array(
-			'patterns' => array(
-				'/\/api\/.*/',  // skip api url by regexp pattern
-				'/\/admin\/.*/',  // skip admin url by regexp pattern
-				'/\.(jpg|png|gif|css|js|ico|txt)/',  // skip files by regexp pattern
-			),
-		),
-	);
+	public static $config = null;
 
 	/**
 	 * @var null
@@ -74,6 +29,36 @@ class FPCache
 	 * @var array
 	 */
 	protected static $mids = [];
+
+
+	/**
+	 * Load config and Redis class
+	 *
+	 * @param null $configFile
+	 */
+
+	public static function boot($configFile = null)
+	{
+
+		if (self::$config !== null) {
+			return;
+		}
+
+		$config_default = require_once(__DIR__ . '/../config/default.php');
+
+		if (!empty($configFile)) if (file_exists($configFile)) {
+			$config_site = require_once($configFile);
+			self::$config = array_replace_recursive($config_default, $config_site);
+		} else {
+			self::$config = $config_default;
+		}
+
+		//var_dump(self::$config);die();
+
+		require_once __DIR__ . '/Redis.php';
+		Redis::config(self::$config['redis']);
+
+	}
 
 
 	/**
@@ -233,6 +218,8 @@ class FPCache
 	public static function load($url = null)
 	{
 
+		self::boot();
+
 		if (self::check('load') === false) {
 			return null;
 		}
@@ -377,7 +364,7 @@ class FPCache
 	protected static function loadRedis($url)
 	{
 
-		self::initRedis();
+		self::boot();
 
 		return Redis::executeCommand('GET', array(self::getKey($url)));
 
@@ -393,7 +380,8 @@ class FPCache
 	protected static function saveRedis($url, $expire, $data)
 	{
 
-		self::initRedis();
+		self::boot();
+
 		$urlkey = self::getKey($url);
 		Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
 
@@ -445,7 +433,8 @@ class FPCache
 	public static function deleteByUrl($url = null)
 	{
 
-		self::initRedis();
+		self::boot();
+
 		$url = self::getUrl($url);
 		Redis::executeCommand('DEL', array(self::getKey($url)));
 
@@ -582,22 +571,10 @@ class FPCache
 	public static function flush()
 	{
 
-		self::initRedis();
+		self::boot();
 		$keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
 		return Redis::executeCommand('DEL', $keys);
-
-	}
-
-
-	/**
-	 * Load Redis Cache Class and set config
-	 */
-	protected static function initRedis()
-	{
-
-		require_once __DIR__ . '/Redis.php';
-		Redis::config(self::$config['redis']);
 
 	}
 
@@ -610,7 +587,7 @@ class FPCache
 	public static function walk($callback)
 	{
 
-		self::initRedis();
+		self::boot();
 
 		// get all cached html page keys
 		$keys = Redis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
