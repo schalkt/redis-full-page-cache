@@ -9,7 +9,7 @@ Install
 ---
 
 Download from here:  [https://github.com/schalkt/schache](https://github.com/schalkt/schache)
-> Composer reguire soon.
+> Composer reguire coming soon.
 
 Setup in Laravel 4.2
 ---
@@ -31,23 +31,22 @@ Schalkt\Schache\FPCache::save(array(
 );
 return Response::make($content, 200);
 ```
-3. Extends all model class with FPCEloquent
+3. Extends all model class with \Schalkt\Schache\Eloquent
 ```
-use Schalkt\Schache\FPCEloquent;
-class BaseModel extends FPCEloquent
+class BaseModel extends \Schalkt\Schache\Eloquent
 {
     ...
 }
 ```
-4. Replace Eloquent methods to FpcFirst(), FpcGet() and FpcPluck('title')
+4. Replace Eloquent first(), get() and pluck() methods to fpcFirst(), fpcGet() and fpcPluck('title')
 ```
-Office::FpcGet();
-Users::active()->FpcFirst();
-Project::where('status', 2)->FpcPluck('title');
+Office::fpcGet();
+Users::active()->fpcFirst();
+Project::where('status', 2)->fpcPluck('title');
 ```
-5. Setup config in FPCache.php file
+5. Configuration in FPCache.php file
 ```
-'prefix' => 'fpc',
+'prefix' => 'fpc-sitename',
 'debug'  => true,
 'redis'  => array(
     'host' => '127.0.0.1',
