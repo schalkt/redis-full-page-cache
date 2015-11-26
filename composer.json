@@ -1,14 +1,15 @@
 {
-    "name": "schalkt/redis-full-page-cache",
-    "description": "Redis full page cache",
+    "name": "schalkt/schache",
+    "description": "Redis full page cache for Laravel 4.2",
     "keywords": [
         "redis",
         "full",
         "page",
-        "cache"
+        "cache",
+        "laravel"
     ],
     "type": "library",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "license": "MIT",
     "authors": [
         {
@@ -21,7 +22,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Schalkt\\RedisFullPageCache\\": "src"
+            "Schalkt\\Schache\\": "src"
         }
     }
 }
