@@ -44,13 +44,10 @@ class FPCache
 			return;
 		}
 
-		$config_default = require_once(__DIR__ . '/../config/default.php');
-
-		if (!empty($configFile)) if (file_exists($configFile)) {
-			$config_site = require_once($configFile);
-			self::$config = array_replace_recursive($config_default, $config_site);
+		if (!empty($configFile) && file_exists($configFile)) {
+			self::$config = require_once($configFile);
 		} else {
-			self::$config = $config_default;
+			self::$config = require_once(__DIR__ . '/../config/default.php');
 		}
 
 		//var_dump(self::$config);die();

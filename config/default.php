@@ -6,7 +6,7 @@ return array(
 	'debug'       => true, // show render time in hidden html tag at the bottom of html
 	'system'      => 'redis',  // currently redis only
 	'suffix'      => 'fpc-default', // change this to unique
-	'expire'      => 60, // cache expire time, 604800 = 1 week, 86400 = 1day, 0 = disabled
+	'expire'      => 86400, // cache expire time, 604800 = 1 week, 86400 = 1day, 0 = disabled
 	'compress'    => array(
 		'comments' => true, // remove comments from html (except IE version comments)
 		'eol'      => true // remove line endings from html (\r\n)
