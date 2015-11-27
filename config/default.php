@@ -29,7 +29,7 @@ return array(
 		'save' => 'regenerate' // save cache : http://domain.tld/?rfpc=regenerate
 	),
 	'ids'         => array(
-		'limit' => 7, // maximum number of separately stored module ids list
+		'limit' => 4, // maximum number of separately stored module ids list
 	),
 	'enable_http' => array(
 		'method' => array(

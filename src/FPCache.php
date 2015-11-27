@@ -134,7 +134,7 @@ class FPCache
 
 		foreach (self::$config['skip']['patterns'] as $pattern) {
 
-			if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
+			if (!empty($pattern)) if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
 				return self::checkFalse();
 			}
 		}
@@ -200,8 +200,8 @@ class FPCache
 	protected static function getListKey($key, $id = '')
 	{
 
-		$name = $key . '#' . $id;
-		$listkey = empty(self::$config['url']['hash']) ? $name : hash(self::$config['url']['hash'], $name);
+		$key = empty(self::$config['url']['hash']) ? $key : hash(self::$config['url']['hash'], $key);
+		$listkey = $id . $key;
 
 		return $listkey . '-list:' . self::$config['suffix'];
 
@@ -333,14 +333,14 @@ class FPCache
 			return false;
 		}
 
-		if (isset($params['compress'])) {
-			self::$config['compress'] = $params['compress'];
+		if (isset($params['config'])) {
+			self::$config = array_replace_recursive(self::$config, $params['config']);
 		}
 
 		$data = array(
 			'http_status' => $params['http_status'],
 			'url'         => $params['url'],
-			'expire'      => $params['expire'],
+			'expire'      => (int)$params['expire'],
 			'headers'     => $params['headers'],
 		);
 
@@ -452,6 +452,7 @@ class FPCache
 	{
 
 		// remove comments except IE version query <!--[if lt IE 9]>
+		// works only if no javascript comments in script tags
 		if (!empty(self::$config['compress']['comments'])) {
 			$html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
 		}
@@ -536,16 +537,33 @@ class FPCache
 		$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 
 		if (!empty($list)) {
-
-
 			Redis::executeCommand('DEL', $list);
 		}
 
-		// check list with id
-		$listKey = self::getListKey($module, $moduleId);
-		$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
-		if (!empty($list)) {
-			Redis::executeCommand('DEL', $list);
+		// check list with wildcard, if new or deleted record
+		if ($moduleId === null) {
+
+			$listKey = self::getListKey($module, '*');
+			$lists = Redis::executeCommand('KEYS', array($listKey));
+
+			if (!empty($lists)) {
+				foreach ($lists as $listKey) {
+					$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
+					if (!empty($list)) {
+						Redis::executeCommand('DEL', $list);
+					}
+				}
+			}
+
+		} else {
+
+			// check list with id
+			$listKey = self::getListKey($module, $moduleId);
+			$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
+			if (!empty($list)) {
+				Redis::executeCommand('DEL', $list);
+			}
+
 		}
 
 	}

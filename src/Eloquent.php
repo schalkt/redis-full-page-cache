@@ -87,6 +87,7 @@ class Eloquent extends \Illuminate\Database\Eloquent\Model
 
 		self::deleted(function ($model) {
 			FPCache::deleteByModule($model->table);
+			FPCache::deleteByModule($model->table, $model->getKey());
 		});
 
 		self::updated(function ($model) {
