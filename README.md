@@ -27,7 +27,7 @@ Setup in Laravel 4.2
 define('APP_START', microtime(true)); // require for debug only
 require_once __DIR__.'/../vendor/schalkt/schache/src/FPCache.php'; // 10 times faster than composer autoload :)
 Schalkt\Schache\FPCache::boot(__DIR__ . '/../app/config/schache.php'); // boot cache system and load the custom config file
-Schalkt\Schache\FPCache::load(); // get the whole page from the cache if available
+Schalkt\Schache\FPCache::load(); // show the page from the cache if available
 ```
 3. Save the page content in the Controller after rendering the view
 ```
@@ -41,18 +41,12 @@ Schalkt\Schache\FPCache::save(array(
 );
 return Response::make($content, 200);
 ```
-4. Extends all model class with \Schalkt\Schache\Eloquent
+4. Extends all model class with \Schalkt\Schache\Model
 ```
-class BaseModel extends \Schalkt\Schache\Eloquent
+class BaseModel extends \Schalkt\Schache\Model
 {
     ...
 }
-```
-5. Replace Eloquent first(), get() and pluck() methods to fpcFirst(), fpcGet() and fpcPluck('title')
-```
-Office::fpcGet();
-Users::active()->fpcFirst();
-Project::where('status', 2)->fpcPluck('title');
 ```
 
 TODO
