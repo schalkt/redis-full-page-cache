@@ -75,10 +75,10 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 	 *
 	 * @param $result
 	 */
-	protected function fpCacheRelations($result)
+	protected function fpCacheRelations($relations)
 	{
 
-		foreach ($result as $items) {
+		foreach ($relations as $items) {
 
 			$count_item = count($items);
 
@@ -86,17 +86,26 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 				FPCache::element($items[0]->table);
 			}
 
-			foreach ($items as $item) {
 
-				if ($count_item <= FPCache::elementLimit()) {
-					FPCache::element($item->table, $item->getKey());
-				}
+			if (!is_array($items)) {
 
-				$relations = $item->getRelations();
+				FPCache::element($items->table, $items->getKey());
 
-				// recursive call if not empty relations
-				if (!empty($relations)) {
-					$this->fpCacheRelations($relations);
+			} else {
+
+				foreach ($items as $item) {
+
+					if ($count_item <= FPCache::elementLimit()) {
+						FPCache::element($item->table, $item->getKey());
+					}
+
+					$recursiveRelations = $item->getRelations();
+
+					// recursive call if not empty relations
+					if (!empty($recursiveRelations)) {
+						$this->fpCacheRelations($recursiveRelations);
+					}
+
 				}
 
 			}
