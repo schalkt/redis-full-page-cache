@@ -86,12 +86,7 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 				FPCache::element($items[0]->table);
 			}
 
-
-			if (!is_array($items)) {
-
-				FPCache::element($items->table, $items->getKey());
-
-			} else {
+			if ($items instanceof \Illuminate\Database\Eloquent\Collection) {
 
 				foreach ($items as $item) {
 
@@ -107,6 +102,10 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 					}
 
 				}
+
+			} else {
+
+				FPCache::element($items->table, $items->getKey());
 
 			}
 
