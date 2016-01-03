@@ -148,7 +148,20 @@ class FPCache
 	{
 
 		if (empty($url)) {
+
 			$url = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+			$secure = !empty($_SERVER['HTTPS']) ? true : false;
+
+		} else {
+
+			$pos = strpos(strtolower($url), 'https://');
+
+			if ($pos !== null) {
+				$secure = ($pos === 0) ? true : false;
+			} else {
+				$secure = !empty($_SERVER['HTTPS']) ? true : false;
+			}
+
 		}
 
 		// remove query params
@@ -166,7 +179,7 @@ class FPCache
 			};
 		}
 
-		return $url;
+		return $secure ? 'https://' . $url : 'http://' . $url;
 
 	}
 
