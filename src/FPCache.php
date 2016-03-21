@@ -2,6 +2,8 @@
 
 namespace Schalkt\Schache;
 
+use Illuminate\Http\Response;
+
 /**
  * Class FPCache
  *
@@ -10,641 +12,676 @@ namespace Schalkt\Schache;
 class FPCache
 {
 
-	/**
-	 * Config
-	 *
-	 * @var null
-	 */
-	public static $config = null;
+    /**
+     * Config
+     *
+     * @var null
+     */
+    public static $config = null;
 
-	/**
-	 * @var null
-	 */
-	protected static $check = null;
+    /**
+     * @var null
+     */
+    protected static $check = null;
 
 
-	/**
-	 * Module and module id relations
-	 *
-	 * @var array
-	 */
-	protected static $mids = [];
+    /**
+     * Module and module id relations
+     *
+     * @var array
+     */
+    protected static $mids = [];
 
 
-	/**
-	 * Load config and Redis class
-	 *
-	 * @param null $configFile
-	 */
+    /**
+     * Load config and Redis class
+     *
+     * @param null $configFile
+     */
 
-	public static function boot($configFile = null)
-	{
+    public static function boot($configFile = null)
+    {
 
-		if (self::$config !== null) {
-			return;
-		}
+        if (self::$config !== null) {
+            return;
+        }
 
-		if (!empty($configFile) && file_exists($configFile)) {
-			self::$config = require_once($configFile);
-		} else {
-			self::$config = require_once(__DIR__ . '/../config/default.php');
-		}
+        if (!empty($configFile) && file_exists($configFile)) {
+            self::$config = require_once($configFile);
+        } else {
+            self::$config = require_once(__DIR__ . '/../config/default.php');
+        }
 
-		//var_dump(self::$config);die();
+        //var_dump(self::$config);die();
 
-		require_once __DIR__ . '/Redis.php';
-		Redis::config(self::$config['redis']);
+        require_once __DIR__ . '/Redis.php';
+        Redis::config(self::$config['redis']);
 
-	}
+    }
 
 
-	/**
-	 * Get config param
-	 *
-	 * @param $key
-	 *
-	 * @return mixed
-	 */
-	public static function config($key)
-	{
+    /**
+     * Get config param
+     *
+     * @param $key
+     *
+     * @return mixed
+     */
+    public static function config($key)
+    {
 
-		return self::$config[$key];
+        return self::$config[$key];
 
-	}
+    }
 
 
-	/**
-	 * Set check to false and return false
-	 *
-	 * @return bool
-	 */
-	protected static function checkFalse()
-	{
+    /**
+     * Set check to false and return false
+     *
+     * @return bool
+     */
+    protected static function checkFalse()
+    {
 
-		self::$check = false;
+        self::$check = false;
 
-		return false;
+        return false;
 
-	}
+    }
 
-	/**
-	 * Check url
-	 *
-	 * @return bool|null
-	 */
-	protected static function check($action)
-	{
 
-		if (self::$check != null) {
-			return self::$check;
-		}
+    public static function filter($route, $request, $response, $salt)
+    {
 
-		if (!empty($_GET[self::$config['commands']['key']])) {
+        $salt = md5($salt) . self::$config['url']['salt'];
 
-			$qp = $_GET[self::$config['commands']['key']];
+        /** @var $response Response */
 
-			// skip load and save
-			if ($qp == self::$config['commands']['skip']) {
-				return self::checkFalse();
-			}
+        // if response not null
+        if ($response !== null) {
 
-			// skip only load
-			if ($action == 'load' && $qp == self::$config['commands']['save']) {
-				return self::checkFalse();
-			}
+            self::save(array(
+                'content'     => $response->getContent(),
+                'http_status' => $response->getStatusCode(),
+                'salt'        => $salt,
+            ));
 
-		}
+            return;
 
-		if ($action == 'load') {
-			return;
-		}
+        }
 
+        self::load(null, $salt);
 
-		if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
-			return self::checkFalse();
-		}
+    }
 
 
-		if (!in_array($_SERVER['REQUEST_METHOD'], self::$config['enable_http']['method'])) {
-			return self::checkFalse();
-		}
+    /**
+     * Check url
+     *
+     * @return bool|null
+     */
+    protected static function check($action)
+    {
 
-		foreach (self::$config['skip']['patterns'] as $pattern) {
+        if (self::$check != null) {
+            return self::$check;
+        }
 
-			if (!empty($pattern)) if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
-				return self::checkFalse();
-			}
-		}
+        if (!empty($_GET[self::$config['commands']['key']])) {
 
-	}
+            $qp = $_GET[self::$config['commands']['key']];
 
+            // skip load and save
+            if ($qp == self::$config['commands']['skip']) {
+                return self::checkFalse();
+            }
 
-	/**
-	 * Get cleaned URL
-	 *
-	 * @return string
-	 */
-	protected static function getUrl($url = null)
-	{
+            // skip only load
+            if ($action == 'load' && $qp == self::$config['commands']['save']) {
+                return self::checkFalse();
+            }
 
-		if (empty($url)) {
+        }
 
-			$url = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
-			$secure = !empty($_SERVER['HTTPS']) ? true : false;
+        if ($action == 'load') {
+            return;
+        }
 
-		} else {
 
-			$pos = strpos(strtolower($url), 'https://');
+        if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
+            return self::checkFalse();
+        }
 
-			if ($pos !== null) {
-				$secure = ($pos === 0) ? true : false;
-			} else {
-				$secure = !empty($_SERVER['HTTPS']) ? true : false;
-			}
 
-		}
+        if (!in_array($_SERVER['REQUEST_METHOD'], self::$config['enable_http']['method'])) {
+            return self::checkFalse();
+        }
 
-		// remove query params
-		if (!empty(self::$config['url']['remove_query_strings'])) {
-			$pos = strpos($url, '?');
-			if ($pos !== false) {
-				$url = substr($url, 0, $pos);
-			}
-		}
+        foreach (self::$config['skip']['patterns'] as $pattern) {
 
-		// remove last char if a slash
-		if (!empty(self::$config['url']['remove_ending_slash'])) {
-			if ($url[strlen($url) - 1] == '/') {
-				$url = substr($url, 0, -1);
-			};
-		}
+            if (!empty($pattern)) {
+                if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
+                    return self::checkFalse();
+                }
+            }
+        }
 
-		return $secure ? 'https://' . $url : 'http://' . $url;
+    }
 
-	}
 
+    /**
+     * Get cleaned URL
+     *
+     * @return string
+     */
+    protected static function getUrl($url = null)
+    {
 
-	/**
-	 * Get the cache key
-	 *
-	 * @param null $url
-	 *
-	 * @return string
-	 */
-	protected static function getKey($url)
-	{
+        if (empty($url)) {
 
-		$key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
+            $url = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+            $secure = !empty($_SERVER['HTTPS']) ? true : false;
 
-		return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . self::$config['suffix'];
-	}
+        } else {
 
-	/**
-	 * Get the list key
-	 *
-	 * @param $key
-	 * @param $id
-	 *
-	 * @return string
-	 */
-	protected static function getListKey($key, $id = '')
-	{
+            $pos = strpos(strtolower($url), 'https://');
 
-		$key = empty(self::$config['url']['hash']) ? $key : hash(self::$config['url']['hash'], $key);
-		$listkey = $id . $key;
+            if ($pos !== null) {
+                $secure = ($pos === 0) ? true : false;
+            } else {
+                $secure = !empty($_SERVER['HTTPS']) ? true : false;
+            }
 
-		return $listkey . '-list:' . self::$config['suffix'];
+        }
 
-	}
+        // remove query params
+        if (!empty(self::$config['url']['remove_query_strings'])) {
+            $pos = strpos($url, '?');
+            if ($pos !== false) {
+                $url = substr($url, 0, $pos);
+            }
+        }
 
+        // remove last char if a slash
+        if (!empty(self::$config['url']['remove_ending_slash'])) {
+            if ($url[strlen($url) - 1] == '/') {
+                $url = substr($url, 0, -1);
+            };
+        }
 
-	/**
-	 * Load cached page
-	 *
-	 * @param null $url
-	 *
-	 * @return bool
-	 */
-	public static function load($url = null)
-	{
+        return $secure ? 'https://' . $url : 'http://' . $url;
 
-		self::boot();
+    }
 
-		if (self::check('load') === false) {
-			return null;
-		}
 
-		list($html, $data) = self::get($url);
+    /**
+     * Get the cache key
+     *
+     * @param null $url
+     *
+     * @return string
+     */
+    protected static function getKey($url)
+    {
 
-		if (empty($html)) {
-			return;
-		}
+        $key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
 
-		if (!empty($data)) {
-			http_response_code($data['http_status']);
-			foreach ($data['headers'] as $header) {
-				header($header);
-			}
-		}
+        return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . self::$config['suffix'];
+    }
 
-		if (ob_get_length()) ob_end_clean();
-		die($html);
+    /**
+     * Get the list key
+     *
+     * @param $key
+     * @param $id
+     *
+     * @return string
+     */
+    protected static function getListKey($key, $id = '')
+    {
 
-	}
+        $key = empty(self::$config['url']['hash']) ? $key : hash(self::$config['url']['hash'], $key);
+        $listkey = $id . $key;
 
+        return $listkey . '-list:' . self::$config['suffix'];
 
-	/**
-	 * Get cached page
-	 *
-	 * @param null $url
-	 *
-	 * @return bool
-	 */
-	public static function get($url = null)
-	{
+    }
 
-		if (empty($url)) {
-			$url = self::getUrl();
-		}
 
-		switch (self::$config['system']) {
+    /**
+     * Load cached page
+     *
+     * @param null $url
+     *
+     * @return bool
+     */
+    public static function load($url = null, $salt = null)
+    {
 
-			case 'redis':
-				$html = self::loadRedis($url);
-				break;
+        self::boot();
 
-		}
+        if (self::check('load') === false) {
+            return null;
+        }
 
-		if (empty($html)) {
-			return array(null, null);
-		}
+        list($html, $data) = self::get($url, $salt);
 
-		// get additional info (headers and http status)
-		list($html, $data) = self::prepareData($html);
+        if (empty($html)) {
+            return;
+        }
 
-		if (!empty(self::$config['debug']) && defined('APP_START')) {
-			$time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
-			$html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
-		}
+        if (!empty($data)) {
+            http_response_code($data['http_status']);
+            foreach ($data['headers'] as $header) {
+                header($header);
+            }
+        }
 
-		return array($html, $data);
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+        die($html);
 
-	}
+    }
 
-	/**
-	 * Split params and html from cached data
-	 *
-	 * @param $html
-	 *
-	 * @return array
-	 */
-	protected static function prepareData($html)
-	{
 
-		// get additional info (headers and http status)
-		$pos = strpos($html, '|||');
-		$json = substr($html, 0, $pos);
-		$html = substr($html, $pos + 3);
-		$data = json_decode($json, true);
+    /**
+     * Get cached page
+     *
+     * @param null $url
+     *
+     * @return bool
+     */
+    public static function get($url = null, $salt = null)
+    {
 
-		return array($html, $data);
+        if (empty($url)) {
+            $url = self::getUrl();
+        }
 
-	}
+        switch (self::$config['system']) {
 
+            case 'redis':
+                $html = self::loadRedis($url . $salt);
+                break;
 
-	/**
-	 * Save page to cache
-	 *
-	 * @param array $params
-	 *
-	 * @return bool
-	 */
-	public static function save($params = array())
-	{
+        }
 
-		if (!isset($params['content'])) {
-			return false;
-		}
+        if (empty($html)) {
+            return array(null, null);
+        }
 
-		if (self::check('save') === false) {
-			return false;
-		}
+        // get additional info (headers and http status)
+        list($html, $data) = self::prepareData($html);
 
-		$defaults = array(
-			'http_status' => 200,
-			'expire'      => self::$config['expire'],
-			'url'         => self::getUrl(),
-			'headers'     => headers_list(),
-		);
+        if (!empty(self::$config['debug']) && defined('APP_START')) {
+            $time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
+            $html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
+        }
 
-		$params = array_replace($defaults, $params);
+        return array($html, $data);
 
-		if (!in_array($params['http_status'], self::$config['enable_http']['status'])) {
-			return false;
-		}
+    }
 
-		if (isset($params['config'])) {
-			self::$config = array_replace_recursive(self::$config, $params['config']);
-		}
+    /**
+     * Split params and html from cached data
+     *
+     * @param $html
+     *
+     * @return array
+     */
+    protected static function prepareData($html)
+    {
 
-		$data = array(
-			'http_status' => $params['http_status'],
-			'url'         => $params['url'],
-			'expire'      => (int)$params['expire'],
-			'headers'     => $params['headers'],
-		);
+        // get additional info (headers and http status)
+        $pos = strpos($html, '|||');
+        $json = substr($html, 0, $pos);
+        $html = substr($html, $pos + 3);
+        $data = json_decode($json, true);
 
-		$value = self::compress($params['content']);
+        return array($html, $data);
 
-		switch (self::$config['system']) {
+    }
 
-			case 'redis':
-				self::saveRedis($params['url'], $params['expire'], json_encode($data) . '|||' . $value);
-				break;
 
-		}
+    /**
+     * Save page to cache
+     *
+     * @param array $params
+     *
+     * @return bool
+     */
+    public static function save($params = array())
+    {
 
-	}
+        if (!isset($params['content'])) {
+            return false;
+        }
 
-	/**
-	 * Load cached page
-	 *
-	 * @return array|string|void
-	 */
-	protected static function loadRedis($url)
-	{
+        if (self::check('save') === false) {
+            return false;
+        }
 
-		self::boot();
+        $defaults = array(
+            'http_status' => 200,
+            'expire'      => self::$config['expire'],
+            'url'         => self::getUrl(),
+            'headers'     => headers_list(),
+        );
 
-		return Redis::executeCommand('GET', array(self::getKey($url)));
+        $params = array_replace($defaults, $params);
 
-	}
+        if (!in_array($params['http_status'], self::$config['enable_http']['status'])) {
+            return false;
+        }
 
+        if (isset($params['config'])) {
+            self::$config = array_replace_recursive(self::$config, $params['config']);
+        }
 
-	/**
-	 * Save redis cache and relations list
-	 *
-	 * @param $expire
-	 * @param $data
-	 */
-	protected static function saveRedis($url, $expire, $data)
-	{
+        $params['salt'] = !empty($params['salt']) ? $params['salt'] : '';
 
-		self::boot();
+        $data = array(
+            'http_status' => $params['http_status'],
+            'url'         => $params['url'],
+            'expire'      => (int)$params['expire'],
+            'headers'     => $params['headers'],
+        );
 
-		$urlkey = self::getKey($url);
-		Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
+        $value = self::compress($params['content']);
 
-		foreach (self::$mids as $module => $moduleId) {
+        switch (self::$config['system']) {
 
-			if (is_array(($moduleId))) {
+            case 'redis':
+                self::saveRedis(
+                    $params['url'] . $params['salt'],
+                    $params['expire'],
+                    json_encode($data) . '|||' . $value);
+                break;
 
-				if (count($moduleId) > self::$config['ids']['limit']) {
-					self::addToList($module, '', $urlkey, $expire);
-				} else {
+        }
 
-					foreach ($moduleId as $index => $id) {
-						self::addToList($module, $id, $urlkey, $expire);
-					}
-				}
+    }
 
-			} else {
+    /**
+     * Load cached page
+     *
+     * @return array|string|void
+     */
+    protected static function loadRedis($url)
+    {
 
-				self::addToList($module, $moduleId, $urlkey, $expire);
-			}
+        self::boot();
 
-		}
+        return Redis::executeCommand('GET', array(self::getKey($url)));
 
-	}
+    }
 
 
-	/**
-	 * Add module and module ids to the relation list
-	 *
-	 * @param $module
-	 * @param $moduleId
-	 * @param $urlkey
-	 * @param $expire
-	 */
-	protected static function addToList($module, $moduleId, $urlkey, $expire)
-	{
+    /**
+     * Save redis cache and relations list
+     *
+     * @param $expire
+     * @param $data
+     */
+    protected static function saveRedis($url, $expire, $data)
+    {
 
-		Redis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
-		Redis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
+        self::boot();
 
-	}
+        $urlkey = self::getKey($url);
+        Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
 
+        foreach (self::$mids as $module => $moduleId) {
 
-	/**
-	 * Delete cached page by url
-	 *
-	 * @param null $url
-	 */
-	public static function deleteByUrl($url = null)
-	{
+            if (is_array(($moduleId))) {
 
-		self::boot();
+                if (count($moduleId) > self::$config['ids']['limit']) {
+                    self::addToList($module, '', $urlkey, $expire);
+                } else {
 
-		$url = self::getUrl($url);
-		Redis::executeCommand('DEL', array(self::getKey($url)));
+                    foreach ($moduleId as $index => $id) {
+                        self::addToList($module, $id, $urlkey, $expire);
+                    }
+                }
 
-	}
+            } else {
 
-	/**
-	 * Compress HTML
-	 * To minify css or js use gulp tasks
-	 *
-	 * @param $html
-	 *
-	 * @return mixed
-	 */
-	protected static function compress($html)
-	{
+                self::addToList($module, $moduleId, $urlkey, $expire);
+            }
 
-		// remove comments except IE version query <!--[if lt IE 9]>
-		// works only if no javascript comments in script tags
-		if (!empty(self::$config['compress']['comments'])) {
-			$html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
-		}
+        }
 
-		// remove all EOL character
-		if (!empty(self::$config['compress']['eol'])) {
-			$html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
-		}
+    }
 
-		return $html;
 
-	}
+    /**
+     * Add module and module ids to the relation list
+     *
+     * @param $module
+     * @param $moduleId
+     * @param $urlkey
+     * @param $expire
+     */
+    protected static function addToList($module, $moduleId, $urlkey, $expire)
+    {
 
-	/**
-	 * Get or set the module ids limit / module / page
-	 *
-	 * @param null $limit
-	 *
-	 * @return null
-	 */
-	public static function elementLimit($limit = null)
-	{
+        Redis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
+        Redis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
 
-		if ($limit !== null) {
-			return self::$config['ids']['limit'] = $limit;
-		} else {
-			return self::$config['ids']['limit'];
-		}
+    }
 
-	}
 
+    /**
+     * Delete cached page by url
+     *
+     * @param null $url
+     */
+    public static function deleteByUrl($url = null)
+    {
 
-	/**
-	 * Store module and id for cached page relation
-	 *
-	 * @param        $module
-	 * @param string $moduleIds
-	 *
-	 * @return array
-	 */
-	public static function element($module, $moduleIds = '')
-	{
+        self::boot();
 
-		if ($moduleIds === '') {
-			self::$mids[$module] = $moduleIds;
+        $url = self::getUrl($url);
+        Redis::executeCommand('DEL', array(self::getKey($url)));
 
-			return self::$mids;
-		}
+    }
 
-		if (isset(self::$mids[$module])) {
-			if (self::$mids[$module] === '') {
-				return self::$mids;
-			}
-		}
+    /**
+     * Compress HTML
+     * To minify css or js use gulp tasks
+     *
+     * @param $html
+     *
+     * @return mixed
+     */
+    protected static function compress($html)
+    {
 
-		$moduleIds = (array)$moduleIds;
+        // remove comments except IE version query <!--[if lt IE 9]>
+        // works only if no javascript comments in script tags
+        if (!empty(self::$config['compress']['comments'])) {
+            $html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
+        }
 
-		if (isset(self::$mids[$module])) {
+        // remove all EOL character
+        if (!empty(self::$config['compress']['eol'])) {
+            $html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
+        }
 
-			self::$mids[$module] = array_merge(self::$mids[$module], $moduleIds);
+        return $html;
 
-		} else {
-			self::$mids[$module] = $moduleIds;
-		}
+    }
 
-		return self::$mids;
+    /**
+     * Get or set the module ids limit / module / page
+     *
+     * @param null $limit
+     *
+     * @return null
+     */
+    public static function elementLimit($limit = null)
+    {
 
-	}
+        if ($limit !== null) {
+            return self::$config['ids']['limit'] = $limit;
+        } else {
+            return self::$config['ids']['limit'];
+        }
 
+    }
 
-	/**
-	 * Delete cached pages by module and id
-	 *
-	 * @param      $module
-	 * @param null $moduleId
-	 */
-	public static function deleteByModule($module, $moduleId = null, $regenerate = null)
-	{
 
-		// check list without id
-		$listKey = self::getListKey($module);
-		$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
+    /**
+     * Store module and id for cached page relation
+     *
+     * @param        $module
+     * @param string $moduleIds
+     *
+     * @return array
+     */
+    public static function element($module, $moduleIds = '')
+    {
 
-		if (!empty($list)) {
-			Redis::executeCommand('DEL', $list);
-		}
+        if ($moduleIds === '') {
+            self::$mids[$module] = $moduleIds;
 
-		// check list with wildcard, if new or deleted record
-		if ($moduleId === null) {
+            return self::$mids;
+        }
 
-			$listKey = self::getListKey($module, '*');
-			$lists = Redis::executeCommand('KEYS', array($listKey));
+        if (isset(self::$mids[$module])) {
+            if (self::$mids[$module] === '') {
+                return self::$mids;
+            }
+        }
 
-			if (!empty($lists)) {
-				foreach ($lists as $listKey) {
-					$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
-					if (!empty($list)) {
-						Redis::executeCommand('DEL', $list);
-					}
-				}
-			}
+        $moduleIds = (array)$moduleIds;
 
-		} else {
+        if (isset(self::$mids[$module])) {
 
-			// check list with id
-			$listKey = self::getListKey($module, $moduleId);
-			$list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
-			if (!empty($list)) {
-				Redis::executeCommand('DEL', $list);
-			}
+            self::$mids[$module] = array_merge(self::$mids[$module], $moduleIds);
 
-		}
+        } else {
+            self::$mids[$module] = $moduleIds;
+        }
 
-	}
+        return self::$mids;
 
-	public static function regenerate()
-	{
+    }
 
-		// redirecting...
-		// TODO
-		ignore_user_abort(true);
-		set_time_limit(0);
-		ob_end_flush();
-		flush();
-		fastcgi_finish_request(); // important when using php-fpm!
-		sleep(5); // User won't feel this sleep because he'll already be away
-		// do some work after user has been redirected
 
-	}
+    /**
+     * Delete cached pages by module and id
+     *
+     * @param      $module
+     * @param null $moduleId
+     */
+    public static function deleteByModule($module, $moduleId = null, $regenerate = null)
+    {
 
-	/**
-	 * Delete all items from cache
-	 */
-	public static function flush()
-	{
+        // check list without id
+        $listKey = self::getListKey($module);
+        $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 
-		self::boot();
-		$keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
+        if (!empty($list)) {
+            Redis::executeCommand('DEL', $list);
+        }
 
-		return Redis::executeCommand('DEL', $keys);
+        // check list with wildcard, if new or deleted record
+        if ($moduleId === null) {
 
-	}
+            $listKey = self::getListKey($module, '*');
+            $lists = Redis::executeCommand('KEYS', array($listKey));
 
+            if (!empty($lists)) {
+                foreach ($lists as $listKey) {
+                    $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
+                    if (!empty($list)) {
+                        Redis::executeCommand('DEL', $list);
+                    }
+                }
+            }
 
-	/**
-	 * Walk
-	 *
-	 * @param $callback
-	 */
-	public static function walk($callback)
-	{
+        } else {
 
-		self::boot();
+            // check list with id
+            $listKey = self::getListKey($module, $moduleId);
+            $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
+            if (!empty($list)) {
+                Redis::executeCommand('DEL', $list);
+            }
 
-		// get all cached html page keys
-		$keys = Redis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
+        }
 
-		foreach ($keys as $key) {
+    }
 
-			// get a html page data
-			$html = Redis::executeCommand('GET', array($key));
+    public static function regenerate()
+    {
 
-			// split params and html
-			list($html, $params) = self::prepareData($html);
+        // redirecting...
+        // TODO
+        ignore_user_abort(true);
+        set_time_limit(0);
+        ob_end_flush();
+        flush();
+        fastcgi_finish_request(); // important when using php-fpm!
+        sleep(5); // User won't feel this sleep because he'll already be away
+        // do some work after user has been redirected
 
-			// for html modification checking
-			$crc = crc32($html);
+    }
 
-			if (is_callable($callback)) {
+    /**
+     * Delete all items from cache
+     */
+    public static function flush()
+    {
 
-				$html = $callback($html, $params);
+        self::boot();
+        $keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
-				// html modified?
-				if ($crc != crc32($html)) {
-					$params['content'] = $html;
-					self::save($params);
-				}
+        return Redis::executeCommand('DEL', $keys);
 
-			}
-		}
+    }
 
-	}
+
+    /**
+     * Walk
+     *
+     * @param $callback
+     */
+    public static function walk($callback)
+    {
+
+        self::boot();
+
+        // get all cached html page keys
+        $keys = Redis::executeCommand('KEYS', array('*-html:' . self::$config['suffix']));
+
+        foreach ($keys as $key) {
+
+            // get a html page data
+            $html = Redis::executeCommand('GET', array($key));
+
+            // split params and html
+            list($html, $params) = self::prepareData($html);
+
+            // for html modification checking
+            $crc = crc32($html);
+
+            if (is_callable($callback)) {
+
+                $html = $callback($html, $params);
+
+                // html modified?
+                if ($crc != crc32($html)) {
+                    $params['content'] = $html;
+                    self::save($params);
+                }
+
+            }
+        }
+
+    }
 
 }
 

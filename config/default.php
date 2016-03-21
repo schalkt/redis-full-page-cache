@@ -21,7 +21,8 @@ return array(
 	'url'         => array(
 		'remove_query_strings' => true, // remove query params form url
 		'remove_ending_slash'  => true, // remove ending slash from url
-		'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false, recommended md5 or sha1
+		'hash'                 => 'md5', // store method of url : 'md5', 'sha1' or false (NOT secure!), recommended md5 or sha1
+		'salt'                 => '1kb8rsla7no',
 	),
 	'commands'    => array(
 		'key'  => 'rfpc',  // change this to custom
