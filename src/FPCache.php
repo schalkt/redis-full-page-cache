@@ -59,14 +59,11 @@ class FPCache
 
         if (isset($_COOKIE[$configLaravel['cookie-name']])) {
 
+            require_once __DIR__ . '/Encrypter.php';
 
+            // decrypt laravel 4.2 session :)
             $cookie = $_COOKIE[$configLaravel['cookie-name']];
-            include_once($publicPath . '/../vendor/laravel/framework/src/Illuminate/Encryption/Encrypter.php');
-            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/SecureRandomInterface.php');
-            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/SecureRandom.php');
-            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/StringUtils.php');
-
-            $crypt = new \Illuminate\Encryption\Encrypter($configLaravel['session-key']);
+            $crypt = new Encrypter($configLaravel['session-key']);
             $hash = $crypt->decrypt($cookie);
             $key = $configLaravel['cache-prefix'] . ':' . $hash;
             $data = Redis::executeCommand('GET', array($key));
