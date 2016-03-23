@@ -638,7 +638,9 @@ class FPCache
 
         $keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
-        return Redis::executeCommand('DEL', $keys);
+        if (!empty($keys)) {
+            return Redis::executeCommand('DEL', $keys);
+        }
 
     }
 
