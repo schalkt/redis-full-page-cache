@@ -80,6 +80,10 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 
 		foreach ($relations as $items) {
 
+			if (empty($items)) {
+				continue;
+			}
+
 			$count_item = count($items);
 
 			if ($count_item > FPCache::elementLimit()) {
