@@ -2,8 +2,6 @@
 
 namespace Schalkt\Schache;
 
-use Illuminate\Http\Response;
-
 /**
  * Class FPCache
  *
@@ -39,12 +37,14 @@ class FPCache
      * @param null $configFile
      */
 
-    public static function boot($configFile = null)
+    public static function boot($publicPath, $configFile = null, $configLaravel = null)
     {
 
         if (self::$config !== null) {
             return;
         }
+
+        $configFile = $publicPath . $configFile;
 
         if (!empty($configFile) && file_exists($configFile)) {
             self::$config = require_once($configFile);
@@ -52,10 +52,40 @@ class FPCache
             self::$config = require_once(__DIR__ . '/../config/default.php');
         }
 
-        //var_dump(self::$config);die();
+        self::$config['unique'] = null;
 
         require_once __DIR__ . '/Redis.php';
         Redis::config(self::$config['redis']);
+
+        if (isset($_COOKIE[$configLaravel['cookie-name']])) {
+
+
+            $cookie = $_COOKIE[$configLaravel['cookie-name']];
+            include_once($publicPath . '/../vendor/laravel/framework/src/Illuminate/Encryption/Encrypter.php');
+            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/SecureRandomInterface.php');
+            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/SecureRandom.php');
+            include_once($publicPath . '/../vendor/symfony/security-core/Symfony/Component/Security/Core/Util/StringUtils.php');
+
+            $crypt = new \Illuminate\Encryption\Encrypter($configLaravel['session-key']);
+            $hash = $crypt->decrypt($cookie);
+            $key = $configLaravel['cache-prefix'] . ':' . $hash;
+            $data = Redis::executeCommand('GET', array($key));
+
+            // if no session data go back
+            if (!empty($data)) {
+
+                $values = unserialize(unserialize($data));
+
+                // if not found schache session key
+                if (isset($values['schache'])) {
+                    self::$config['unique'] = $values['schache'];
+                }
+
+            }
+
+        }
+
+        self::load();
 
     }
 
@@ -86,31 +116,6 @@ class FPCache
         self::$check = false;
 
         return false;
-
-    }
-
-
-    public static function filter($route, $request, $response, $salt)
-    {
-
-        $salt = md5($salt) . self::$config['url']['salt'];
-
-        /** @var $response Response */
-
-        // if response not null
-        if ($response !== null) {
-
-            self::save(array(
-                'content'     => $response->getContent(),
-                'http_status' => $response->getStatusCode(),
-                'salt'        => $salt,
-            ));
-
-            return;
-
-        }
-
-        self::load(null, $salt);
 
     }
 
@@ -226,7 +231,7 @@ class FPCache
 
         $key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
 
-        return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . self::$config['suffix'];
+        return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . md5(self::$config['unique']) . ':' . self::$config['suffix'];
     }
 
     /**
@@ -255,16 +260,14 @@ class FPCache
      *
      * @return bool
      */
-    public static function load($url = null, $salt = null)
+    public static function load($url = null)
     {
-
-        self::boot();
 
         if (self::check('load') === false) {
             return null;
         }
 
-        list($html, $data) = self::get($url, $salt);
+        list($html, $data) = self::get($url);
 
         if (empty($html)) {
             return;
@@ -292,7 +295,7 @@ class FPCache
      *
      * @return bool
      */
-    public static function get($url = null, $salt = null)
+    public static function get($url = null)
     {
 
         if (empty($url)) {
@@ -302,7 +305,7 @@ class FPCache
         switch (self::$config['system']) {
 
             case 'redis':
-                $html = self::loadRedis($url . $salt);
+                $html = self::loadRedis($url);
                 break;
 
         }
@@ -379,7 +382,7 @@ class FPCache
             self::$config = array_replace_recursive(self::$config, $params['config']);
         }
 
-        $params['salt'] = !empty($params['salt']) ? $params['salt'] : '';
+        $params['unique'] = !empty($params['unique']) ? $params['unique'] : '';
 
         $data = array(
             'http_status' => $params['http_status'],
@@ -394,7 +397,7 @@ class FPCache
 
             case 'redis':
                 self::saveRedis(
-                    $params['url'] . $params['salt'],
+                    $params['url'],
                     $params['expire'],
                     json_encode($data) . '|||' . $value);
                 break;
@@ -411,8 +414,6 @@ class FPCache
     protected static function loadRedis($url)
     {
 
-        self::boot();
-
         return Redis::executeCommand('GET', array(self::getKey($url)));
 
     }
@@ -427,7 +428,7 @@ class FPCache
     protected static function saveRedis($url, $expire, $data)
     {
 
-        self::boot();
+        //self::boot();
 
         $urlkey = self::getKey($url);
         Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
