@@ -478,7 +478,7 @@ class FPCache
     public static function deleteByUrl($url = null)
     {
 
-        self::boot();
+        //self::boot();
 
         $url = self::getUrl($url);
         Redis::executeCommand('DEL', array(self::getKey($url)));
@@ -634,7 +634,8 @@ class FPCache
     public static function flush()
     {
 
-        self::boot();
+        //self::boot();
+
         $keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
 
         return Redis::executeCommand('DEL', $keys);
