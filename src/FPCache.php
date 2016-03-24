@@ -631,12 +631,16 @@ class FPCache
     /**
      * Delete all items from cache
      */
-    public static function flush()
+    public static function flush($pattern = null)
     {
 
         //self::boot();
 
-        $keys = Redis::executeCommand('KEYS', array('*:' . self::$config['suffix']));
+        if ($pattern === null) {
+            $pattern = '*:' . self::$config['suffix'];
+        }
+
+        $keys = Redis::executeCommand('KEYS', array($pattern));
 
         if (!empty($keys)) {
             return Redis::executeCommand('DEL', $keys);
