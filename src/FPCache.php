@@ -52,6 +52,12 @@ class FPCache
             self::$config = require_once(__DIR__ . '/../config/default.php');
         }
 
+
+        if (self::check('load') === false) {
+            return;
+        }
+
+
         self::$config['unique'] = null;
 
         require_once __DIR__ . '/Redis.php';
@@ -145,10 +151,18 @@ class FPCache
 
         }
 
+        foreach (self::$config['skip']['patterns'] as $pattern) {
+
+            if (!empty($pattern)) {
+                if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
+                    return self::checkFalse();
+                }
+            }
+        }
+
         if ($action == 'load') {
             return;
         }
-
 
         if (!isset($_SERVER['HTTP_HOST']) || !isset($_SERVER['REQUEST_URI'])) {
             return self::checkFalse();
@@ -157,15 +171,6 @@ class FPCache
 
         if (!in_array($_SERVER['REQUEST_METHOD'], self::$config['enable_http']['method'])) {
             return self::checkFalse();
-        }
-
-        foreach (self::$config['skip']['patterns'] as $pattern) {
-
-            if (!empty($pattern)) {
-                if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
-                    return self::checkFalse();
-                }
-            }
         }
 
     }
@@ -260,10 +265,6 @@ class FPCache
     public static function load($url = null)
     {
 
-        if (self::check('load') === false) {
-            return null;
-        }
-
         list($html, $data) = self::get($url);
 
         if (empty($html)) {
@@ -280,7 +281,8 @@ class FPCache
         if (ob_get_length()) {
             ob_end_clean();
         }
-        die($html);
+
+        exit($html);
 
     }
 
@@ -629,7 +631,7 @@ class FPCache
     }
 
     /**
-     * Delete all items from cache
+     * Delete items from cache by pattern
      */
     public static function flush($pattern = null)
     {
