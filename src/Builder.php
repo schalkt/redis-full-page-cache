@@ -70,11 +70,12 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 
 	}
 
-	/**
-	 * Store relations for cache
-	 *
-	 * @param $result
-	 */
+    /**
+     * Store relations for cache
+     *
+     * @param $relations
+     * @internal param $result
+     */
 	protected function fpCacheRelations($relations)
 	{
 
@@ -87,7 +88,11 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 			$count_item = count($items);
 
 			if ($count_item > FPCache::elementLimit()) {
-				FPCache::element($items[0]->table);
+
+			    if (!empty($items[0])) {
+                    FPCache::element($items[0]->table);
+                }
+
 			}
 
 			if ($items instanceof \Illuminate\Database\Eloquent\Collection) {
