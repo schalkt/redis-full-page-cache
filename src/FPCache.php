@@ -2,6 +2,8 @@
 
 namespace Schalkt\Schache;
 
+use Illuminate\Support\Facades\Session;
+
 /**
  * Class FPCache
  *
@@ -52,43 +54,63 @@ class FPCache
             self::$config = require_once(__DIR__ . '/../config/default.php');
         }
 
-
         if (self::check('load') === false) {
             return;
         }
-
 
         self::$config['unique'] = null;
 
         require_once __DIR__ . '/Redis.php';
         Redis::config(self::$config['redis']);
 
-        if (isset($_COOKIE[$configLaravel['cookie-name']])) {
+        self::sessionKeyGet($configLaravel);
+        self::load();
 
-            require_once __DIR__ . '/Encrypter.php';
+    }
 
-            // decrypt laravel 4.2 session :)
-            $cookie = $_COOKIE[$configLaravel['cookie-name']];
-            $crypt = new Encrypter($configLaravel['session-key']);
-            $hash = $crypt->decrypt($cookie);
-            $key = $configLaravel['cache-prefix'] . ':' . $hash;
-            $data = Redis::executeCommand('GET', array($key));
+    /**
+     * Set cache key to Latavel session
+     *
+     * @param $key
+     */
+    public static function sessionKeyPut($key)
+    {
 
-            // if no session data go back
-            if (!empty($data)) {
+        $unique = empty(self::$config['debug']) ? md5($key) : $key;
+        Session::put('schache', $unique);
 
-                $values = unserialize(unserialize($data));
+    }
 
-                // if not found schache session key
-                if (isset($values['schache'])) {
-                    self::$config['unique'] = $values['schache'];
-                }
 
-            }
+    public static function sessionKeyGet($configLaravel)
+    {
 
+        if (!isset($_COOKIE[$configLaravel['cookie-name']])) {
+            return;
         }
 
-        self::load();
+        require_once __DIR__ . '/Encrypter.php';
+
+        // decrypt laravel 4.2 session :)
+        $cookie = $_COOKIE[$configLaravel['cookie-name']];
+        $crypt = new Encrypter($configLaravel['session-key']);
+        $hash = $crypt->decrypt($cookie);
+        $key = $configLaravel['cache-prefix'] . ':' . $hash;
+        $data = Redis::executeCommand('GET', array($key));
+
+        // if no session data go back
+        if (empty($data)) {
+            return;
+        }
+
+        $values = unserialize(unserialize($data));
+
+        // if not found schache session key
+        if (!isset($values['schache'])) {
+            return;
+        }
+
+        self::$config['unique'] = $values['schache'];
 
     }
 
@@ -151,13 +173,19 @@ class FPCache
 
         }
 
-        foreach (self::$config['skip']['patterns'] as $pattern) {
+        foreach (self::$config['url']['rules'] as $rules) {
 
-            if (!empty($pattern)) {
-                if (preg_match($pattern, $_SERVER['REQUEST_URI'], $mathces)) {
-                    return self::checkFalse();
-                }
+            if (!preg_match($rules['pattern'], $_SERVER['REQUEST_URI'], $mathces)) {
+                continue;
             }
+
+            if (isset($rules['cache']) && $rules['cache'] !== true) {
+                return self::checkFalse();
+            }
+
+            self::$config['url']['defaults'] = array_merge(self::$config['url']['defaults'], $rules);
+            break;
+
         }
 
         if ($action == 'load') {
@@ -202,7 +230,7 @@ class FPCache
         }
 
         // remove query params
-        if (!empty(self::$config['url']['remove_query_strings'])) {
+        if (!empty(self::$config['url']['defaults']['remove_query_strings'])) {
             $pos = strpos($url, '?');
             if ($pos !== false) {
                 $url = substr($url, 0, $pos);
@@ -210,7 +238,7 @@ class FPCache
         }
 
         // remove last char if a slash
-        if (!empty(self::$config['url']['remove_ending_slash'])) {
+        if (!empty(self::$config['url']['defaults']['remove_ending_slash'])) {
             if ($url[strlen($url) - 1] == '/') {
                 $url = substr($url, 0, -1);
             };
@@ -231,9 +259,8 @@ class FPCache
     protected static function getKey($url)
     {
 
-        $key = empty(self::$config['url']['hash']) ? $url : hash(self::$config['url']['hash'], $url);
+        return self::getHash($url) . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . self::$config['unique'] . ':' . self::$config['suffix'];
 
-        return $key . '-' . strtolower($_SERVER['REQUEST_METHOD']) . '-html:' . md5(self::$config['unique']) . ':' . self::$config['suffix'];
     }
 
     /**
@@ -247,10 +274,24 @@ class FPCache
     protected static function getListKey($key, $id = '')
     {
 
-        $key = empty(self::$config['url']['hash']) ? $key : hash(self::$config['url']['hash'], $key);
-        $listkey = $id . $key;
+        return $id . self::getHash($key) . '-list:' . self::$config['suffix'];
 
-        return $listkey . '-list:' . self::$config['suffix'];
+    }
+
+    /**
+     * Get the hashed key
+     *
+     * @param $key
+     * @return string
+     */
+    protected static function getHash($key)
+    {
+
+        if (!empty(self::$config['debug']) || empty(self::$config['url']['defaults']['hash'])) {
+            return $key;
+        }
+
+        return hash(self::$config['url']['defaults']['hash'], $key);
 
     }
 
@@ -271,15 +312,15 @@ class FPCache
             return;
         }
 
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
         if (!empty($data)) {
             http_response_code($data['http_status']);
             foreach ($data['headers'] as $header) {
                 header($header);
             }
-        }
-
-        if (ob_get_length()) {
-            ob_end_clean();
         }
 
         exit($html);
@@ -301,6 +342,8 @@ class FPCache
             $url = self::getUrl();
         }
 
+        //var_dump($url);die();
+
         switch (self::$config['system']) {
 
             case 'redis':
@@ -316,9 +359,8 @@ class FPCache
         // get additional info (headers and http status)
         list($html, $data) = self::prepareData($html);
 
-        if (!empty(self::$config['debug']) && defined('APP_START')) {
-            $time = '<!-- ' . (microtime(true) - APP_START) . ' -->';
-            $html = preg_replace('/<\/body>/i', $time . '</body>', $html, 1);
+        if (defined('APP_START')) {
+            $data['headers'][] = 'X-FPCache: ' . (microtime(true) - APP_START);
         }
 
         return array($html, $data);
@@ -366,12 +408,20 @@ class FPCache
 
         $defaults = array(
             'http_status' => 200,
-            'expire'      => self::$config['expire'],
-            'url'         => self::getUrl(),
-            'headers'     => headers_list(),
+            'expire' => self::$config['url']['defaults']['expire'],
+            'url' => self::getUrl(),
         );
 
-        $params = array_replace($defaults, $params);
+        if (!empty($params['headers'])) {
+            foreach ($params['headers'] as $key => $value) {
+                $headers[] = $key . ': ' . $value[0];
+            }
+            $params['headers'] = array_merge(headers_list(), $headers);
+        } else {
+            $params['headers'] = headers_list();
+        }
+
+        $params = array_replace_recursive($defaults, $params);
 
         if (!in_array($params['http_status'], self::$config['enable_http']['status'])) {
             return false;
@@ -381,13 +431,13 @@ class FPCache
             self::$config = array_replace_recursive(self::$config, $params['config']);
         }
 
-        $params['unique'] = !empty($params['unique']) ? $params['unique'] : '';
+        self::$config['unique'] = !empty($params['unique']) ? $params['unique'] : '';
 
         $data = array(
             'http_status' => $params['http_status'],
-            'url'         => $params['url'],
-            'expire'      => (int)$params['expire'],
-            'headers'     => $params['headers'],
+            'url' => $params['url'],
+            'expire' => (int)$params['expire'],
+            'headers' => $params['headers'],
         );
 
         $value = self::compress($params['content']);
@@ -413,6 +463,8 @@ class FPCache
     protected static function loadRedis($url)
     {
 
+        //var_dump(self::getKey($url));die();
+
         return Redis::executeCommand('GET', array(self::getKey($url)));
 
     }
@@ -429,25 +481,27 @@ class FPCache
 
         //self::boot();
 
-        $urlkey = self::getKey($url);
-        Redis::executeCommand('SETEX', array($urlkey, $expire, $data));
+        self::$config['unique'] = self::getHash(self::$config['unique']);
+        $urlKey = self::getKey($url);
+
+        Redis::executeCommand('SETEX', array($urlKey, $expire, $data));
 
         foreach (self::$mids as $module => $moduleId) {
 
             if (is_array(($moduleId))) {
 
                 if (count($moduleId) > self::$config['ids']['limit']) {
-                    self::addToList($module, '', $urlkey, $expire);
+                    self::addToList($module, '', $urlKey, $expire);
                 } else {
 
                     foreach ($moduleId as $index => $id) {
-                        self::addToList($module, $id, $urlkey, $expire);
+                        self::addToList($module, $id, $urlKey, $expire);
                     }
                 }
 
             } else {
 
-                self::addToList($module, $moduleId, $urlkey, $expire);
+                self::addToList($module, $moduleId, $urlKey, $expire);
             }
 
         }
@@ -500,12 +554,12 @@ class FPCache
 
         // remove comments except IE version query <!--[if lt IE 9]>
         // works only if no javascript comments in script tags
-        if (!empty(self::$config['compress']['comments'])) {
+        if (!empty(self::$config['url']['defaults']['compress']['comments'])) {
             $html = preg_replace('/<!--\s*[^\[](.*)-->/Uis', '', $html);
         }
 
         // remove all EOL character
-        if (!empty(self::$config['compress']['eol'])) {
+        if (!empty(self::$config['url']['defaults']['compress']['eol'])) {
             $html = preg_replace('/[\r\n\t\s]+/s', ' ', $html);
         }
 
