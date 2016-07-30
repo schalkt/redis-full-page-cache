@@ -1,5 +1,6 @@
 {
     "name": "schalkt/schache",
+	"version": "0.1.2",
     "description": "Redis full page cache for Laravel 4.2",
     "keywords": [
         "redis",
@@ -9,12 +10,12 @@
         "laravel"
     ],
     "type": "library",
-    "version": "0.1.8",
     "license": "MIT",
     "authors": [
         {
             "name": "Tamas Schalk",
-            "homepage": "https://github.com/schalkt"
+			"email": "composer@schalk.hu",
+			"homepage": "https://github.com/schalkt"
         }
     ],
     "require": {
@@ -24,5 +25,5 @@
         "psr-4": {
             "Schalkt\\Schache\\": "src"
         }
-    }
+    },
 }
