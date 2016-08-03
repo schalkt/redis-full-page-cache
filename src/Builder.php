@@ -90,7 +90,7 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 			if ($count_item > FPCache::elementLimit()) {
 
 			    if (!empty($items[0])) {
-                    FPCache::element($items[0]->table);
+                    FPCache::element($items[0]->getTable());
                 }
 
 			}
@@ -100,7 +100,7 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 				foreach ($items as $item) {
 
 					if ($count_item <= FPCache::elementLimit()) {
-						FPCache::element($item->table, $item->getKey());
+						FPCache::element($item->getTable(), $item->getKey());
 					}
 
 					$recursiveRelations = $item->getRelations();
@@ -114,7 +114,7 @@ class Builder extends \Illuminate\Database\Eloquent\Builder
 
 			} else {
 
-				FPCache::element($items->table, $items->getKey());
+				FPCache::element($items->getTable(), $items->getKey());
 
 			}
 

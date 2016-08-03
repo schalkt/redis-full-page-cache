@@ -35,19 +35,24 @@ abstract class Model extends \Illuminate\Database\Eloquent\Model
 		parent::boot();
 
 		self::created(function ($model) {
-			FPCache::deleteByModule($model->table);
+			FPCache::deleteByModule($model->getTable());
 		});
 
 		self::deleted(function ($model) {
-			FPCache::deleteByModule($model->table);
-			FPCache::deleteByModule($model->table, $model->getKey());
+			FPCache::deleteByModule($model->getTable());
+			FPCache::deleteByModule($model->getTable(), $model->getKey());
 		});
 
 		self::updated(function ($model) {
-			FPCache::deleteByModule($model->table, $model->getKey());
+			FPCache::deleteByModule($model->getTable(), $model->getKey());
 		});
 
 	}
+
+    public static function getTableName()
+    {
+        return with(new static)->getTable();
+    }
 
 
 }

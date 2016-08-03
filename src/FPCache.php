@@ -4,6 +4,7 @@ namespace Schalkt\Schache;
 
 use Illuminate\Support\Facades\Session;
 
+
 /**
  * Class FPCache
  *
@@ -363,6 +364,8 @@ class FPCache
             $data['headers'][] = 'X-FPCache: ' . (microtime(true) - APP_START);
         }
 
+        self::log('GET', $url);
+
         return array($html, $data);
 
     }
@@ -486,6 +489,8 @@ class FPCache
 
         Redis::executeCommand('SETEX', array($urlKey, $expire, $data));
 
+        self::log('SAVE', $url);
+
         foreach (self::$mids as $module => $moduleId) {
 
             if (is_array(($moduleId))) {
@@ -520,6 +525,8 @@ class FPCache
     protected static function addToList($module, $moduleId, $urlkey, $expire)
     {
 
+        self::log('LIST ADD', $module . ':' . $moduleId);
+
         Redis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
         Redis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
 
@@ -537,6 +544,7 @@ class FPCache
         //self::boot();
 
         $url = self::getUrl($url);
+        self::log('DEL', $url);
         Redis::executeCommand('DEL', array(self::getKey($url)));
 
     }
@@ -637,6 +645,8 @@ class FPCache
         $listKey = self::getListKey($module);
         $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 
+        self::log('DEL', $module . ':' . $moduleId);
+
         if (!empty($list)) {
             Redis::executeCommand('DEL', $list);
         }
@@ -651,6 +661,7 @@ class FPCache
                 foreach ($lists as $listKey) {
                     $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
                     if (!empty($list)) {
+                        self::log('LIST DEL', $list);
                         Redis::executeCommand('DEL', $list);
                     }
                 }
@@ -662,10 +673,29 @@ class FPCache
             $listKey = self::getListKey($module, $moduleId);
             $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
             if (!empty($list)) {
+                self::log('LIST DEL', $list);
                 Redis::executeCommand('DEL', $list);
             }
 
         }
+
+    }
+
+
+    /**
+     * Custom logging because composer autoload not loaded
+     *
+     * @param $entry
+     */
+    protected static function log($cmd, $entry)
+    {
+
+        if (empty(self::$config['debug'])) {
+            return;
+        }
+
+        $logfile = $_SERVER['DOCUMENT_ROOT'] . '/..' . self::$config['log'];
+        file_put_contents($logfile, date('Y-m-d H:i:s') . ' ' . $cmd . ' ' . $entry . PHP_EOL, FILE_APPEND);
 
     }
 
