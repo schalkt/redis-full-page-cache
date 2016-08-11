@@ -22,9 +22,12 @@ Setup in Laravel 4.2
     'port' => 6379,
 )
 ```
+
+Setup session store to Redis or
+
 2. Put these lines to the top of public/index.php 
 ```
-define('APP_START', microtime(true)); // require for debug only
+define('APP_START', microtime(true)); // require for render time calculation
 require_once __DIR__.'/../vendor/schalkt/schache/src/FPCache.php'; // 10 times faster than composer autoload :)
 Schalkt\Schache\FPCache::boot(__DIR__ . '/../app/config/schache.php'); // boot cache system and load the custom config file
 Schalkt\Schache\FPCache::load(); // show the page from the cache if available

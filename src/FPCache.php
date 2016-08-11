@@ -40,17 +40,19 @@ class FPCache
      * @param null $configFile
      */
 
-    public static function boot($publicPath, $configFile = null, $configLaravel = null)
+    public static function boot($docroot, $environment = 'production')
     {
-
+	
         if (self::$config !== null) {
             return;
         }
 
-        $configFile = $publicPath . $configFile;
+		$environment = ($environment == 'production') ? '' : '/' . $environment;
+		$configDir = $docroot . '/app/config' . $environment;
+		$configSelf = $configDir . '/schache.php';
 
-        if (!empty($configFile) && file_exists($configFile)) {
-            self::$config = require_once($configFile);
+        if (!empty($configSelf) && file_exists($configSelf)) {
+            self::$config = require_once($configSelf);
         } else {
             self::$config = require_once(__DIR__ . '/../config/default.php');
         }
@@ -60,14 +62,55 @@ class FPCache
         }
 
         self::$config['unique'] = null;
-
+		
         require_once __DIR__ . '/Redis.php';
         Redis::config(self::$config['redis']);
 
-        self::sessionKeyGet($configLaravel);
+        self::sessionKeyGet(self::getLaravelConfig($configDir));
         self::load();
 
     }
+	
+	/**
+     * Get Laravel config settings
+     *
+     * @param null $configDir
+     */
+	
+	protected static function getLaravelConfig($configDir){
+		
+		
+		$key = self::getHash('laravelConfigs') . ':' . self::$config['suffix'];
+		$laravelConfig = Redis::executeCommand('GET', array($key));
+		
+		if (empty($laravelConfig) {
+		
+			$configApp = require_once($configDir . '/app.php');
+			$configCache = require_once($configDir . '/cache.php');
+			$configSession = require_once($configDir . '/session.php');
+		
+			$laravelConfig =  array(
+				'app' => array(
+					'debug' => $configApp['debug'],
+					'key' => $configApp['key']
+				),
+				'cache' => array(
+					'driver' => $configCache['driver'],
+					'prefix' => $configCache['prefix']
+				),
+				'session' => array(
+					'driver' => $configSession['driver'],
+					'cookie' => $configSession['cookie']
+				)
+			);
+			
+			Redis::executeCommand('SETEX', array($key, self::$config['laravel']['config-cache-expire'], $laravelConfig));		
+			
+		}
+		
+		return $laravelConfig;
+		
+	}
 
     /**
      * Set cache key to Latavel session
@@ -83,20 +126,20 @@ class FPCache
     }
 
 
-    public static function sessionKeyGet($configLaravel)
+    public static function sessionKeyGet($laravelConfig)
     {
 
-        if (!isset($_COOKIE[$configLaravel['cookie-name']])) {
+        if (!isset($_COOKIE[$laravelConfig['session']['cookie']])) {
             return;
         }
 
         require_once __DIR__ . '/Encrypter.php';
 
         // decrypt laravel 4.2 session :)
-        $cookie = $_COOKIE[$configLaravel['cookie-name']];
-        $crypt = new Encrypter($configLaravel['session-key']);
+        $cookie = $_COOKIE[$laravelConfig['session']['cookie']];
+        $crypt = new Encrypter($laravelConfig['app']['key']);
         $hash = $crypt->decrypt($cookie);
-        $key = $configLaravel['cache-prefix'] . ':' . $hash;
+        $key = $laravelConfig['cache']['prefix'] . ':' . $hash;
         $data = Redis::executeCommand('GET', array($key));
 
         // if no session data go back
@@ -345,7 +388,7 @@ class FPCache
 
         //var_dump($url);die();
 
-        switch (self::$config['system']) {
+        switch (self::$config['driver']) {
 
             case 'redis':
                 $html = self::loadRedis($url);
@@ -445,7 +488,7 @@ class FPCache
 
         $value = self::compress($params['content']);
 
-        switch (self::$config['system']) {
+        switch (self::$config['driver']) {
 
             case 'redis':
                 self::saveRedis(

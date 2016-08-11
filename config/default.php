@@ -4,8 +4,11 @@
 return array(
 
     'debug' => false, // url hash disabled in redis
-    'system' => 'redis',  // currently redis only
+    'driver' => 'redis',  // currently redis only
     'suffix' => 'dmafpc-local', // change this to unique, check laravel session prefix!!!
+	'laravel => array(
+		'config-cache-expire' => 3600
+	),
     'redis' => array(
         'password' => null,
         'host' => '127.0.0.1',
