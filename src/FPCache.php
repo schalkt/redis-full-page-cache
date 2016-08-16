@@ -37,23 +37,18 @@ class FPCache
     /**
      * Load config and Redis class
      *
-     * @param null $configFile
+     * @param $configFile
+     * @param $laravelConfig
      */
 
-    public static function boot($publicPath, $configFile = null, $configLaravel = null)
+    public static function boot($configFile, $laravelConfig)
     {
 
         if (self::$config !== null) {
             return;
         }
 
-        $configFile = $publicPath . $configFile;
-
-        if (!empty($configFile) && file_exists($configFile)) {
-            self::$config = require_once($configFile);
-        } else {
-            self::$config = require_once(__DIR__ . '/../config/default.php');
-        }
+        self::$config = self::loadConfig($configFile);
 
         if (self::check('load') === false) {
             return;
@@ -64,10 +59,32 @@ class FPCache
         require_once __DIR__ . '/Redis.php';
         Redis::config(self::$config['redis']);
 
-        self::sessionKeyGet($configLaravel);
+        self::sessionKeyGet($laravelConfig);
         self::load();
 
     }
+
+    /**
+     * Load config file
+     *
+     * @param $configFile
+     * @return mixed
+     */
+    protected static function loadConfig($configFile)
+    {
+
+        if (file_exists($configFile)) {
+            $config = require_once($configFile);
+        }
+
+        if (empty($config)) {
+            $config = require_once(__DIR__ . '/../config/default.php');
+        }
+
+        return $config;
+
+    }
+
 
     /**
      * Set cache key to Latavel session
@@ -83,20 +100,20 @@ class FPCache
     }
 
 
-    public static function sessionKeyGet($configLaravel)
+    public static function sessionKeyGet($laravelConfig)
     {
 
-        if (!isset($_COOKIE[$configLaravel['cookie-name']])) {
+        if (!isset($_COOKIE[$laravelConfig['session']['cookie']])) {
             return;
         }
 
         require_once __DIR__ . '/Encrypter.php';
 
         // decrypt laravel 4.2 session :)
-        $cookie = $_COOKIE[$configLaravel['cookie-name']];
-        $crypt = new Encrypter($configLaravel['session-key']);
+        $cookie = $_COOKIE[$laravelConfig['session']['cookie']];
+        $crypt = new Encrypter($laravelConfig['app']['key']);
         $hash = $crypt->decrypt($cookie);
-        $key = $configLaravel['cache-prefix'] . ':' . $hash;
+        $key = $laravelConfig['cache']['prefix'] . ':' . $hash;
         $data = Redis::executeCommand('GET', array($key));
 
         // if no session data go back
@@ -345,7 +362,7 @@ class FPCache
 
         //var_dump($url);die();
 
-        switch (self::$config['system']) {
+        switch (self::$config['driver']) {
 
             case 'redis':
                 $html = self::loadRedis($url);
@@ -445,7 +462,7 @@ class FPCache
 
         $value = self::compress($params['content']);
 
-        switch (self::$config['system']) {
+        switch (self::$config['driver']) {
 
             case 'redis':
                 self::saveRedis(
@@ -525,7 +542,7 @@ class FPCache
     protected static function addToList($module, $moduleId, $urlkey, $expire)
     {
 
-        self::log('LIST ADD', $module . ':' . $moduleId);
+        self::log('LIST ADD', [$module, $moduleId, $urlkey]);
 
         Redis::executeCommand('LPUSH', array(self::getListKey($module, $moduleId), $urlkey));
         Redis::executeCommand('EXPIRE', array(self::getListKey($module, $moduleId), $expire + rand(1, 60)));
@@ -645,7 +662,7 @@ class FPCache
         $listKey = self::getListKey($module);
         $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
 
-        self::log('DEL', $module . ':' . $moduleId);
+        self::log('LIST DEL', [$module, $moduleId, $listKey]);
 
         if (!empty($list)) {
             Redis::executeCommand('DEL', $list);
@@ -661,7 +678,7 @@ class FPCache
                 foreach ($lists as $listKey) {
                     $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
                     if (!empty($list)) {
-                        self::log('LIST DEL', $list);
+                        self::log('LIST DEL', [$module, $moduleId, $listKey]);
                         Redis::executeCommand('DEL', $list);
                     }
                 }
@@ -673,7 +690,7 @@ class FPCache
             $listKey = self::getListKey($module, $moduleId);
             $list = Redis::executeCommand('LRANGE', array($listKey, 0, -1));
             if (!empty($list)) {
-                self::log('LIST DEL', $list);
+                self::log('LIST DEL', [$module, $moduleId, $listKey]);
                 Redis::executeCommand('DEL', $list);
             }
 
@@ -694,6 +711,7 @@ class FPCache
             return;
         }
 
+        $entry = is_array($entry) ? implode(' | ', $entry) : $entry;
         $logfile = $_SERVER['DOCUMENT_ROOT'] . '/..' . self::$config['log'];
         file_put_contents($logfile, date('Y-m-d H:i:s') . ' ' . $cmd . ' ' . $entry . PHP_EOL, FILE_APPEND);
 

@@ -5,6 +5,11 @@
 > The project is under development, but this is a working and stable version.
 
 
+Requirements
+---
+- Laravel 4.2
+- Redis
+
 Install
 ---
 
@@ -22,14 +27,18 @@ Setup in Laravel 4.2
     'port' => 6379,
 )
 ```
-2. Put these lines to the top of public/index.php 
+
+2. Laravel config modifications
+- set session store to Redis in Laravel session.php config file
+
+3. Put these lines to the top of public/index.php 
 ```
-define('APP_START', microtime(true)); // require for debug only
+define('APP_START', microtime(true)); // require for render time calculation
 require_once __DIR__.'/../vendor/schalkt/schache/src/FPCache.php'; // 10 times faster than composer autoload :)
 Schalkt\Schache\FPCache::boot(__DIR__ . '/../app/config/schache.php'); // boot cache system and load the custom config file
 Schalkt\Schache\FPCache::load(); // show the page from the cache if available
 ```
-3. Save the page content in the Controller after rendering the view
+4. Save the page content in the Controller after rendering the view
 ```
 $content = View::make('index');
 Schalkt\Schache\FPCache::save(array(
@@ -41,7 +50,7 @@ Schalkt\Schache\FPCache::save(array(
 );
 return Response::make($content, 200);
 ```
-4. Extends all model class with \Schalkt\Schache\Model
+5. Extends all model class with \Schalkt\Schache\Model
 ```
 class BaseModel extends \Schalkt\Schache\Model
 {
@@ -51,5 +60,6 @@ class BaseModel extends \Schalkt\Schache\Model
 
 TODO
 ---
+- readme.md update :)
 - Unit tests
 - File cache for large HTML pages

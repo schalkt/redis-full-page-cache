@@ -4,8 +4,9 @@
 return array(
 
     'debug' => false, // url hash disabled in redis
-    'system' => 'redis',  // currently redis only
-    'suffix' => 'dmafpc-local', // change this to unique, check laravel session prefix!!!
+    'driver' => 'redis',  // currently redis only
+    'suffix' => 'dmafpc-stage', // change this to unique, check laravel session prefix!!!
+    'log' => '/app/storage/logs/fpcache.log',
     'redis' => array(
         'password' => null,
         'host' => '127.0.0.1',
@@ -25,15 +26,15 @@ return array(
             ),
         ),
         'rules' => array(
-            array(
+            'files' => array(
                 'pattern' => '/\.(jpg|png|gif|css|js|ico|txt)/',
                 'cache' => false
             ),
-            array(
+            'api' => array(
                 'pattern' => '/\/api\/.*/',
                 'cache' => false
             ),
-            array(
+            'admin-rest' => array(
                 'pattern' => '/\/admin\/rest\/.*/',
                 'remove_query_strings' => false, // remove query params form url
                 'cache' => true,
@@ -43,7 +44,7 @@ return array(
                     'eol' => false // remove line endings from html (\r\n)
                 ),
             ),
-            array(
+            'admin' => array(
                 'pattern' => '/\/admin/',
                 'expire' => 3600,
                 'cache' => true,
@@ -52,7 +53,7 @@ return array(
                     'eol' => false // remove line endings from html (\r\n)
                 ),
             ),
-            array(
+            'all' => array(
                 'pattern' => '/.*/',
                 'expire' => 604800,
                 'cache' => true
@@ -76,4 +77,6 @@ return array(
             403,
         ),
     )
+
+
 );
