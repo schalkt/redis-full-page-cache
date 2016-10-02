@@ -56,6 +56,7 @@ class FPCache
 
         self::$config['unique'] = null;
 
+
         require_once __DIR__ . '/Redis.php';
         Redis::config(self::$config['redis']);
 
@@ -94,8 +95,11 @@ class FPCache
     public static function sessionKeyPut($key)
     {
 
-        $unique = empty(self::$config['debug']) ? md5($key) : $key;
-        Session::put('schache', $unique);
+        if (empty(self::$config['debug']) && !empty(self::$config['url']['defaults']['hash'])) {
+            $key = hash(self::$config['url']['defaults']['hash'], $key);
+        }
+
+        Session::put('schache', $key);
 
     }
 
@@ -360,8 +364,6 @@ class FPCache
             $url = self::getUrl();
         }
 
-        //var_dump($url);die();
-
         switch (self::$config['driver']) {
 
             case 'redis':
@@ -482,8 +484,6 @@ class FPCache
      */
     protected static function loadRedis($url)
     {
-
-        //var_dump(self::getKey($url));die();
 
         return Redis::executeCommand('GET', array(self::getKey($url)));
 
