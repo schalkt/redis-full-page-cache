@@ -309,7 +309,7 @@ class FPCache
     protected static function getHash($key)
     {
 
-        if (!empty(self::$config['debug']) || empty(self::$config['url']['defaults']['hash'])) {
+        if ($key === null || !empty(self::$config['debug']) || empty(self::$config['url']['defaults']['hash'])) {
             return $key;
         }
 
@@ -453,7 +453,7 @@ class FPCache
             self::$config = array_replace_recursive(self::$config, $params['config']);
         }
 
-        self::$config['unique'] = !empty($params['unique']) ? $params['unique'] : '';
+        self::$config['unique'] = !empty($params['unique']) ? $params['unique'] : null;
 
         $data = array(
             'http_status' => $params['http_status'],
